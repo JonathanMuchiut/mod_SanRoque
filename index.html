@@ -241,6 +241,10 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .panel-head { position: sticky; top: 0; z-index: 1; background: var(--panel); display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .panel-head .pop-x { position: static; }
 .panel-head b { flex: 1; font-size: 15px; }
+.mancha-btn { color: #c026d3; font-size: 17px; }
+.mancha-btn.on { background: #c026d3; color: #fff; border-color: #c026d3; }
+.map-hint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 24px); margin: 0; z-index: 2;
+  background: var(--panel); color: var(--ink); border: 1px solid #c026d3; border-radius: 4px; padding: 5px 10px; font-size: 13px; text-align: center; }
 .panel-head .atras { margin-right: 8px; }
 .menu-list { display: grid; padding: 4px 0 14px; }
 .menu-info { padding: 10px 0 6px; }
@@ -332,7 +336,9 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
         <button class="btn icon" id="zIn" title="Acercar">+</button>
         <button class="btn icon" id="zOut" title="Alejar">−</button>
         <button class="btn icon" id="zFit" title="Mapa completo">⤢</button>
+        <button class="btn icon mancha-btn" id="manchaBtn" title="Soltar un contaminante" aria-pressed="false">●</button>
       </div>
+      <p class="map-hint" id="manchaHint" hidden></p>
       <div class="readout" id="readout" hidden></div>
     </div>
     <div class="timeline">
@@ -478,6 +484,18 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
         <p class="hint" id="medInfo"></p>
         <div class="row"><label for="medTol">Tolerancia de tiempo [h]</label><input type="number" id="medTol" min="0" step="0.5" value="3" data-s></div>
         <p class="hint" data-editor>CSV con encabezado, separado por <code>;</code>, <code>,</code> o tabulación. Formato largo: <code>estacion; fecha; profundidad; variable; valor</code>. Formato ancho: <code>estacion; fecha; profundidad; Temperatura; OD; …</code> (una columna por variable). Cadena de sensores: <code>Time; -0.4; -1.0; …</code> (una columna por profundidad, una fila por instante). En la tabla de mediciones cada archivo se asigna a una estación y una variable; si trae otras estaciones o variables, se ignoran. Fecha como <code>28/10/2026 10:30</code> o <code>2026-10-28 10:30</code>; la hora puede ir en una columna <code>hora</code>. Profundidad en metros bajo la superficie. Cada perfil medido se compara con la salida del modelo más cercana en el tiempo, si está dentro de la tolerancia; si varios perfiles caen en la misma salida, se usa el más cercano.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Contaminante</summary>
+      <div class="sec">
+        <p class="hint">Tocá el botón ● sobre el mapa y después un punto del embalse: se suelta una mancha en el instante que estás viendo y se mueve con la velocidad superficial en los instantes siguientes. Es solo advección con un poco de dispersión lateral, no un modelo de transporte.</p>
+        <div class="row"><label for="mPart">Partículas</label><input type="number" id="mPart" min="50" max="5000" step="50" value="600"></div>
+        <div class="row"><label for="mK">Dispersión lateral [m²/s]</label><input type="number" id="mK" min="0" step="any" value="0.5"></div>
+        <div class="row"><label for="mColor">Color</label><div class="cell-r"><input type="color" id="mColor" value="#c026d3"></div></div>
+        <div class="btns"><button class="btn" id="mBorrar">Borrar manchas</button></div>
+        <p class="hint" id="mInfo"></p>
       </div>
     </details>
 
@@ -791,7 +809,7 @@ function autoRange(campo) {
   else if (campo === "mag") r = { vmin: 0, vmax: roundUp(q(0.99)) };
   else {
     const lo = q(0.01), hi = q(0.99), s = niceStep(Math.max(hi - lo, Math.abs(hi) * 1e-3, 1e-9), 10);
-    const vmin = lo >= 0 && lo < 0.15 * hi ? 0 : Math.floor(lo / s) * s;
+    const vmin = lo >= -1e-3 * Math.abs(hi) && lo < 0.15 * hi ? 0 : Math.floor(lo / s) * s; // negativos ínfimos (p. ej. −0,000) cuentan como 0
     r = { vmin, vmax: Math.ceil(hi / s) * s };
   }
   const firstPos = vals.find((v) => v > 0);
@@ -1162,6 +1180,7 @@ function render(k = st.k, fast = false) {
   if (o.vecOn && st.vel && !fast) drawVectors(o, k, map);
   drawNorth(o, map); drawScaleBar(o, map, g); if (!fast) drawRef(o, map);
   drawStations();
+  drawManchas(k, o);
   ctx.restore();
   ctx.strokeStyle = o.colTexto; ctx.lineWidth = 1; ctx.strokeRect(map.x + 0.5, map.y + 0.5, map.w - 1, map.h - 1);
   if (o.ejes) drawAxes(o, map, g);
@@ -1230,9 +1249,15 @@ function onDataChanged(newGrid) {
   autoEscalaVec(false);
   updateTimeUI(); schedule();
 }
+function paletaFija(c) {
+  // paletas por defecto del visor: velocidad → Jet, clorofila → Amarillo–verde
+  if (c === "mag") return "jet";
+  const e = escDe(c); if (e && canonVar(e.variable) === "clorofila") return "ylgn";
+  return null;
+}
 function paletaSugerida(c) {
   if (c === "u" || c === "v") return "rdylbu";
-  return "jet";
+  return paletaFija(c) || "jet";
 }
 function onCampoChanged(user) {
   const c = $("campo").value;
@@ -1241,7 +1266,7 @@ function onCampoChanged(user) {
   if (user) {
     $("paleta").value = paletaSugerida(c);
     $("invertir").checked = false; $("logEsc").checked = false;
-  }
+  } else if (MODO === "visor" && paletaFija(c)) { $("paleta").value = paletaFija(c); $("invertir").checked = false; }
   updateTimeUI(); drawStrip();
 }
 function ajustarAlto(user = true) {
@@ -1458,7 +1483,7 @@ cv.addEventListener("pointermove", (e) => {
 const endDrag = (e) => {
   if (!st.drag) return;
   const d = st.drag; st.drag = null; cv.classList.remove("drag");
-  if (e && e.type === "pointerup") { const [px, py] = canvasPt(e); if (Math.hypot(px - d.px, py - d.py) < 4 && !elegirEstacionEn(px, py)) abrirPopup(px, py); }
+  if (e && e.type === "pointerup") { const [px, py] = canvasPt(e); if (Math.hypot(px - d.px, py - d.py) < 4) { if (st.manchaModo) liberarMancha(px, py); else if (!elegirEstacionEn(px, py)) abrirPopup(px, py); } }
   schedule();
 };
 cv.addEventListener("pointerup", endDrag); cv.addEventListener("pointercancel", endDrag);
@@ -2599,6 +2624,125 @@ if (MODO === "visor") {
   elegirEstacionEn = (px, py) => { const ok = orig(px, py); if (ok && !$("profCard").hidden) perfil(true); return ok; };
   window.addEventListener("resize", () => schedule());
 })();
+/* ---------- Contaminante: partículas advectadas por la velocidad superficial ---------- */
+st.manchas = []; st.manchaModo = false; st.busc = null;
+function buscador() {
+  // celdas activas agrupadas en una grilla de cajas para buscar vecinas rápido
+  const g = st.vel; if (!g) return null;
+  if (st.busc && st.busc.id === st.gridId) return st.busc;
+  const mx = g.esferico ? 111320 * g.kx : 1, my = g.esferico ? 111320 : 1; // unidades → metros
+  const idx = [];
+  for (let i = 0; i < g.NM; i++) if (Number.isFinite(g.xz[i]) && Number.isFinite(g.yz[i])) idx.push(i);
+  const ds = [];
+  for (let j = 0; j < idx.length && ds.length < 4000; j += Math.max(1, Math.floor(idx.length / 4000))) {
+    const i = idx[j], v = i + 1; // vecina en n
+    if (v < g.NM && Number.isFinite(g.xz[v])) { const d = Math.hypot((g.xz[v] - g.xz[i]) * mx, (g.yz[v] - g.yz[i]) * my); if (d > 0) ds.push(d); }
+  }
+  ds.sort((a, b) => a - b);
+  const h = ds.length ? ds[Math.floor(ds.length / 2)] : 50, B = 2 * h;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const i of idx) { const x = g.xz[i] * mx, y = g.yz[i] * my; if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  const nx = Math.floor((x1 - x0) / B) + 1, ny = Math.floor((y1 - y0) / B) + 1;
+  const caja = (i) => Math.floor((g.xz[i] * mx - x0) / B) * ny + Math.floor((g.yz[i] * my - y0) / B);
+  const ini = new Int32Array(nx * ny + 1);
+  for (const i of idx) ini[caja(i) + 1]++;
+  for (let c = 0; c < nx * ny; c++) ini[c + 1] += ini[c];
+  const fill = ini.slice(0, nx * ny), cel = new Int32Array(idx.length), cx = new Float64Array(g.NM), cy = new Float64Array(g.NM);
+  for (const i of idx) { cel[fill[caja(i)]++] = i; cx[i] = g.xz[i] * mx; cy[i] = g.yz[i] * my; }
+  return (st.busc = { id: st.gridId, h, B, x0, y0, nx, ny, ini, cel, cx, cy, mx, my });
+}
+function velEn(bu, xm, ym, u, v) {
+  // velocidad en (xm, ym) [m] por distancia inversa entre celdas cercanas; null = fuera del agua
+  const ca = Math.floor((xm - bu.x0) / bu.B), cb = Math.floor((ym - bu.y0) / bu.B), r = 1.2 * bu.h;
+  let su = 0, sv = 0, sw = 0, dmin = Infinity;
+  for (let a = Math.max(0, ca - 1); a <= Math.min(bu.nx - 1, ca + 1); a++) for (let b = Math.max(0, cb - 1); b <= Math.min(bu.ny - 1, cb + 1); b++) {
+    const c = a * bu.ny + b;
+    for (let j = bu.ini[c]; j < bu.ini[c + 1]; j++) {
+      const i = bu.cel[j], dx = bu.cx[i] - xm, dy = bu.cy[i] - ym, d = Math.sqrt(dx * dx + dy * dy);
+      if (d > r || !Number.isFinite(u[i]) || !Number.isFinite(v[i])) continue;
+      if (d < dmin) dmin = d;
+      const w = 1 / (d * d + 1); su += w * u[i]; sv += w * v[i]; sw += w;
+    }
+  }
+  return sw > 0 && dmin < 0.9 * bu.h ? [su / sw, sv / sw] : null;
+}
+function gauss() { let a = 0, b = 0; while (!a) a = Math.random(); while (!b) b = Math.random(); return Math.sqrt(-2 * Math.log(a)) * Math.cos(2 * Math.PI * b); }
+function simularMancha(xm, ym, k0) {
+  const g = st.vel, bu = buscador(), N = Math.max(50, Math.min(5000, Math.round(+$("mPart").value || 600)));
+  const K = Math.max(0, +$("mK").value || 0), pos = [];
+  const P = new Float64Array(2 * N);
+  for (let p = 0; p < N; p++) { P[2 * p] = xm + gauss() * bu.h * 0.15; P[2 * p + 1] = ym + gauss() * bu.h * 0.15; }
+  pos[k0] = Float32Array.from(P);
+  const seg = (kv) => g.timesOk ? (g.tms[kv + 1] - g.tms[kv]) / 1000 : 3600;
+  for (let kv = k0; kv < g.nt - 1; kv++) {
+    const T = seg(kv); if (!(T > 0)) { pos[kv + 1] = Float32Array.from(P); continue; }
+    const nsub = Math.max(1, Math.ceil(T / 600)), dt = T / nsub;
+    const A = velFrame(kv), Bf = velFrame(kv + 1);
+    const vel = (x, y, al) => {
+      const a = velEn(bu, x, y, A.u, A.v), b = velEn(bu, x, y, Bf.u, Bf.v);
+      if (!a || !b) return a || b; return [a[0] + al * (b[0] - a[0]), a[1] + al * (b[1] - a[1])];
+    };
+    for (let s = 0; s < nsub; s++) {
+      const al = (s + 0.5) / nsub, sd = Math.sqrt(2 * K * dt);
+      for (let p = 0; p < N; p++) {
+        const x = P[2 * p], y = P[2 * p + 1];
+        const v1 = vel(x, y, s / nsub); if (!v1) continue;
+        const xh = x + v1[0] * dt / 2, yh = y + v1[1] * dt / 2;
+        const v2 = vel(xh, yh, al) || v1;
+        let nx = x + v2[0] * dt, ny = y + v2[1] * dt;
+        if (sd > 0) {
+          const m = Math.hypot(v2[0], v2[1]), z = gauss() * sd;
+          if (m > 1e-6) { nx += -v2[1] / m * z; ny += v2[0] / m * z; } else { nx += z; ny += gauss() * sd; }
+        }
+        if (velEn(bu, nx, ny, A.u, A.v)) { P[2 * p] = nx; P[2 * p + 1] = ny; } // si saldría del agua, queda donde estaba
+      }
+    }
+    pos[kv + 1] = Float32Array.from(P);
+  }
+  return { k0, x0: xm, y0: ym, pos, color: $("mColor").value, N };
+}
+function liberarMancha(px, py) {
+  const hint = $("manchaHint");
+  if (!st.vel) { hint.textContent = "Este período no trae velocidades."; return; }
+  const bu = buscador(), xm = st.T.iX(px) * bu.mx, ym = st.T.iY(py) * bu.my, k0 = matchIdx(st.vel, st.k);
+  const A = velFrame(k0);
+  if (!velEn(bu, xm, ym, A.u, A.v)) { hint.textContent = "Ese punto no está en el agua. Tocá dentro del embalse."; return; }
+  hint.textContent = "Calculando la trayectoria…";
+  setTimeout(() => {
+    st.manchas.push(simularMancha(xm, ym, k0));
+    hint.textContent = "Mancha soltada. Tocá Reproducir o avanzá en el tiempo para ver cómo se mueve.";
+    infoManchas(); schedule();
+  }, 30);
+}
+function drawManchas(k, o) {
+  if (!st.manchas.length || !st.vel || !st.T) return;
+  const bu = buscador(), kv = matchIdx(st.vel, k), T = st.T, r = Math.max(2.5, o.f * 0.15);
+  for (const m of st.manchas) {
+    if (kv < m.k0 || !m.pos[kv]) continue;
+    const P = m.pos[kv];
+    ctx.globalAlpha = 0.7; ctx.fillStyle = m.color; ctx.beginPath();
+    for (let p = 0; p < m.N; p++) { const x = T.X(P[2 * p] / bu.mx), y = T.Y(P[2 * p + 1] / bu.my); ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, 2 * Math.PI); }
+    ctx.fill(); ctx.globalAlpha = 1;
+    const x0 = T.X(m.x0 / bu.mx), y0 = T.Y(m.y0 / bu.my), c = r * 3;
+    ctx.strokeStyle = m.color; ctx.lineWidth = 2; ctx.beginPath();
+    ctx.moveTo(x0 - c, y0 - c); ctx.lineTo(x0 + c, y0 + c); ctx.moveTo(x0 + c, y0 - c); ctx.lineTo(x0 - c, y0 + c); ctx.stroke();
+  }
+}
+function infoManchas() {
+  const b = st.vel ? baseDs() : null;
+  $("mInfo").textContent = !st.manchas.length ? "" : `${st.manchas.length} mancha${st.manchas.length === 1 ? "" : "s"} · ` +
+    st.manchas.map((m) => `desde ${b ? fmtFecha(st.vel, m.k0, "dmyhm") : "cuadro " + (m.k0 + 1)}`).join(" · ");
+}
+function borrarManchas() { st.manchas = []; infoManchas(); $("manchaHint").hidden = !st.manchaModo; if (st.manchaModo) $("manchaHint").textContent = "Tocá un punto del embalse para soltar el contaminante."; schedule(); }
+$("manchaBtn").onclick = () => {
+  st.manchaModo = !st.manchaModo;
+  $("manchaBtn").classList.toggle("on", st.manchaModo); $("manchaBtn").setAttribute("aria-pressed", String(st.manchaModo));
+  const hint = $("manchaHint"); hint.hidden = !st.manchaModo;
+  hint.textContent = st.vel ? "Tocá un punto del embalse para soltar el contaminante." : "Este período no trae velocidades.";
+  if (st.manchaModo) $("pop").hidden = true;
+};
+$("mBorrar").onclick = borrarManchas;
+{ const cp = cargarPeriodo; cargarPeriodo = (buf) => { st.manchas = []; st.busc = null; infoManchas(); return cp(buf); }; }
 </script>
 
 </body></html>
