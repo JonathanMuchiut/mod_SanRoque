@@ -2360,16 +2360,73 @@ function nombrePeriodoAuto() {
   const d = (ms) => fmtFecha({ tms: [ms], tiempos: [""] }, 0, "dmy");
   return `${d(b.tms[0])} – ${d(b.tms[b.nt - 1])}`;
 }
+function cuantizarD3DV(u8) {
+  // Opción A: cada variable y perfil se guarda en 2 bytes, escalado entre su mínimo y su máximo
+  // (65.534 niveles; 65535 = sin dato). La grilla queda en 4 bytes.
+  const L = new DataView(u8.buffer, u8.byteOffset).getUint32(4, true), H = 8 + L;
+  const h = JSON.parse(new TextDecoder().decode(u8.subarray(8, H)));
+  const f = new Float32Array(u8.buffer.slice(u8.byteOffset + H, u8.byteOffset + u8.byteLength));
+  const NM = h.N * h.M, segs = [];
+  for (const v of lista(h.variables)) segs.push([v.offset, (v.tipo === "vector" ? 2 : 1) * NM * v.nt]);
+  for (const p of lista(h.perfiles)) {
+    const n = +p.K * lista(p.estaciones).length * +p.nt;
+    segs.push([p.offset, (p.tipo === "vector" ? 2 : 1) * n], [p.offsetProf, n]);
+  }
+  segs.sort((a, b) => a[0] - b[0]);
+  const partes = [], q = { nFloat: f.length, segs: [] };
+  let pos = 0;
+  for (const [o, n] of segs) {
+    if (o > pos) partes.push(new Uint8Array(f.slice(pos, o).buffer));
+    const a = f.subarray(o, o + n); let lo = Infinity, hi = -Infinity;
+    for (let i = 0; i < n; i++) { const x = a[i]; if (Number.isFinite(x)) { if (x < lo) lo = x; if (x > hi) hi = x; } }
+    if (!(hi >= lo)) { lo = 0; hi = 0; }
+    const paso = hi > lo ? (hi - lo) / 65534 : 1, c = new Uint16Array(n);
+    for (let i = 0; i < n; i++) { const x = a[i]; c[i] = Number.isFinite(x) ? Math.round((x - lo) / paso) : 65535; }
+    partes.push(new Uint8Array(c.buffer)); q.segs.push([o, n, lo, paso]); pos = o + n;
+  }
+  if (pos < f.length) partes.push(new Uint8Array(f.slice(pos).buffer));
+  q.cab = new TextDecoder().decode(u8.subarray(0, H));
+  return empaquetar("D3DQ", q, partes);
+}
+function descuantizarD3DV(buf) {
+  const u8 = new Uint8Array(buf);
+  if (String.fromCharCode(u8[0], u8[1], u8[2], u8[3]) !== "D3DQ") return buf; // períodos sin cuantizar
+  const L = new DataView(buf).getUint32(4, true);
+  const q = JSON.parse(new TextDecoder().decode(u8.subarray(8, 8 + L)));
+  const cab = new TextEncoder().encode(q.cab), out = new ArrayBuffer(cab.length + 4 * q.nFloat);
+  new Uint8Array(out).set(cab);
+  const f = new Float32Array(out, cab.length), dv = new DataView(buf);
+  let p = 8 + L, pos = 0;
+  const copiar = (n) => { for (let i = 0; i < n; i++, p += 4) f[pos + i] = dv.getFloat32(p, true); pos += n; };
+  for (const [o, n, lo, paso] of q.segs) {
+    if (o > pos) copiar(o - pos);
+    for (let i = 0; i < n; i++, p += 2) { const c = dv.getUint16(p, true); f[o + i] = c === 65535 ? NaN : lo + c * paso; }
+    pos = o + n;
+  }
+  if (pos < q.nFloat) copiar(q.nFloat - pos);
+  return out;
+}
+async function comprimir(blob) {
+  // gzip: los períodos pesan ~4–5 veces menos (GitHub acepta hasta 25 MB por la web)
+  if (typeof CompressionStream === "undefined") return blob;
+  return await new Response(blob.stream().pipeThrough(new CompressionStream("gzip"))).blob();
+}
+async function descomprimir(buf) {
+  const u = new Uint8Array(buf);
+  if (u.length < 2 || u[0] !== 0x1f || u[1] !== 0x8b) return buf; // períodos viejos, sin comprimir
+  return await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+}
 async function exportarPeriodoBlob() {
   const modelo = new Uint8Array(await serializarD3DV().arrayBuffer()), b = gridDs();
   const est = estilo(); est.campo = $("campo").value;
   const meta = {
-    tipo: "periodo-san-roque", version: 1, nombre: $("perNombre").value.trim() || nombrePeriodoAuto(),
+    tipo: "periodo-san-roque", version: 2, nombre: $("perNombre").value.trim() || nombrePeriodoAuto(),
     desde: b.timesOk ? b.tiempos[0] : "", hasta: b.timesOk ? b.tiempos[b.nt - 1] : "", creado: new Date().toISOString(),
     ejemplo: !!st.demo, estilo: est,
     mediciones: st.meds.map((m) => [m.estTxt, m.t, m.z, m.varTxt, m.v]),
   };
-  return { blob: empaquetar("D3DP", meta, [modelo]), meta };
+  const modeloQ = new Uint8Array(await cuantizarD3DV(modelo).arrayBuffer());
+  return { blob: await comprimir(empaquetar("D3DP", meta, [modeloQ])), meta };
 }
 if (MODO === "editor") $("perExport").onclick = async () => {
   const msg = $("perExpMsg"); msg.textContent = "";
@@ -2393,7 +2450,7 @@ function cargarPeriodo(buf) {
   if (buf.byteLength < 8 || String.fromCharCode(u8[0], u8[1], u8[2], u8[3]) !== "D3DP") throw new Error("El archivo del período no es válido.");
   const L = new DataView(buf).getUint32(4, true);
   const meta = JSON.parse(new TextDecoder().decode(u8.subarray(8, 8 + L)));
-  const res = parseD3DV(buf.slice(8 + L), meta.nombre || "periodo");
+  const res = parseD3DV(descuantizarD3DV(buf.slice(8 + L)), meta.nombre || "periodo");
   const campoPrev = $("campo").value, nombrePrev = campoNombre(campoPrev);
   st.vel = null; st.escs = []; st.est = res.est; st.perf = res.perf; st.envCache = {}; st.selEst = Math.min(st.selEst, Math.max(0, res.est.length - 1));
   for (const ds of res.campos) { if (ds.tipo === "vector") st.vel = ds; else st.escs.push(ds); }
@@ -2417,7 +2474,7 @@ async function abrirPeriodo(i) {
   const msg = $("perMsg"); msg.textContent = "Cargando…";
   try {
     const r = await fetch(p.archivo); if (!r.ok) throw new Error(`no se pudo descargar (${r.status}).`);
-    const meta = cargarPeriodo(await r.arrayBuffer());
+    const meta = cargarPeriodo(await descomprimir(await r.arrayBuffer()));
     msg.textContent = "";
     $("perInfo").textContent = [meta.desde && meta.hasta ? `${fmtMs(parseTime(meta.desde))} → ${fmtMs(parseTime(meta.hasta))}` : "",
       st.meds.length ? `${st.meds.length} mediciones de campo` : "sin mediciones de campo"].filter(Boolean).join(" · ");
