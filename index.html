@@ -215,7 +215,46 @@ textarea { width: 100%; min-height: 90px; font-family: var(--mono); font-size: 1
   .timeline .tlabel { grid-column: 1 / -1; }
 }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+/* ---------- Visor público: mapa fijo y opciones en un menú ---------- */
+html, body { height: 100%; overflow: hidden; }
+body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
+.top { flex: none; padding-block: 8px; }
+.brand h1 { font-size: 17px; }
+.brand span, .chips { display: none; }
+.top-ctrl { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; flex: 1 1 auto; justify-content: flex-end; min-width: 0; }
+.tc { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.tc span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+.tc select { width: auto; min-width: 0; max-width: 46vw; }
+.menu-btn { flex: none; }
+.app { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: stretch; padding-block: 8px; }
+.stage { position: static; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
+.canvas-wrap { flex: 1; min-height: 0; padding: 6px; }
+#fig { max-height: 100% !important; max-width: 100%; }
+.timeline { flex: none; }
+.map-zoom { position: absolute; top: 10px; left: 10px; display: flex; flex-direction: column; gap: 6px; z-index: 2; }
+.map-zoom .btn { box-shadow: 0 1px 4px rgba(0,0,0,.18); }
+@media (max-width: 640px) { .map-zoom { top: 6px; left: 6px; gap: 4px; } .map-zoom .btn.icon { width: 30px; height: 30px; } }
+.map-msg { position: absolute; top: 10px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 120px); background: var(--panel); border: 1px solid var(--line); border-radius: 4px; padding: 4px 10px; z-index: 2; }
+.panel { position: fixed; top: 0; right: 0; bottom: 0; width: min(400px, 92vw); z-index: 15; overflow-y: auto; border-radius: 0; border-width: 0 0 0 1px;
+  transform: translateX(105%); transition: transform .2s ease; box-shadow: -6px 0 24px rgba(0,0,0,.18); padding-bottom: env(safe-area-inset-bottom, 0px); }
+.panel.abierto { transform: none; }
+.panel-head { position: sticky; top: 0; z-index: 1; background: var(--panel); display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
+.panel-head .pop-x { position: static; }
+.backdrop { position: fixed; inset: 0; z-index: 14; background: rgba(8, 18, 22, .35); }
+#perfModal .prof-card { border: 0; padding: 0; background: none; }
+@media (max-width: 640px) {
+  .top { gap: 6px 10px; }
+  .top-ctrl { justify-content: flex-start; width: 100%; }
+  .tc { flex: 1 1 40%; }
+  .tc select { max-width: none; width: 100%; }
+  .tc span { display: none; }
+  .menu-btn { order: -1; margin-left: auto; }
+  .brand { flex: 1; }
+  .timeline .btn { height: 30px; }
+}
+@media (prefers-reduced-motion: reduce) { .panel { transition: none; } }
 </style>
+
 
 <header class="top">
   <div class="brand">
@@ -223,6 +262,11 @@ textarea { width: 100%; min-height: 90px; font-family: var(--mono); font-size: 1
     <span>Campos superficiales de Delft3D · velocidad, temperatura y calidad de agua</span>
   </div>
   <div class="chips" id="chips"></div>
+  <div class="top-ctrl">
+    <label class="tc"><span>Período</span><select id="periodo"></select></label>
+    <label class="tc"><span>Variable</span><select id="campo" data-s></select></label>
+    <button class="btn menu-btn" id="menuBtn" aria-expanded="false" aria-controls="panel">☰ Opciones</button>
+  </div>
 </header>
 
 <div class="modal" id="serieModal" hidden>
@@ -272,12 +316,13 @@ textarea { width: 100%; min-height: 90px; font-family: var(--mono); font-size: 1
         <p class="pop-msg" id="popMsg"></p>
       </div>
       <div class="drop" id="drop" hidden>Soltá el archivo .d3dv</div>
-    </div>
-    <div class="bar">
-      <button class="btn icon" id="zIn" title="Acercar">+</button>
-      <button class="btn icon" id="zOut" title="Alejar">−</button>
-      <button class="btn" id="zFit">Mapa completo</button>
-      <div class="readout" id="readout">Arrastrá para mover · rueda para zoom · clic en una celda para ver su valor</div>
+      <p class="msg map-msg" id="perMsg"></p>
+      <div class="map-zoom">
+        <button class="btn icon" id="zIn" title="Acercar">+</button>
+        <button class="btn icon" id="zOut" title="Alejar">−</button>
+        <button class="btn icon" id="zFit" title="Mapa completo">⤢</button>
+      </div>
+      <div class="readout" id="readout" hidden></div>
     </div>
     <div class="timeline">
       <button class="btn icon" id="prev" title="Cuadro anterior">‹</button>
@@ -286,6 +331,10 @@ textarea { width: 100%; min-height: 90px; font-family: var(--mono); font-size: 1
       <input type="range" id="slider" min="0" max="0" value="0" aria-label="Tiempo">
       <div class="tlabel" id="tlabel">—</div>
     </div>
+  </section>
+<div class="modal" id="perfModal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-label="Perfil vertical">
+    <div class="modal-head"><div><div class="modal-tit">Perfil vertical</div></div><button class="pop-x" id="perfX" aria-label="Cerrar">×</button></div>
     <div class="prof-card" id="profCard" hidden>
       <div class="prof-head">
         <label for="pEst">Estación</label><select id="pEst"></select>
@@ -300,15 +349,16 @@ textarea { width: 100%; min-height: 90px; font-family: var(--mono); font-size: 1
       <p class="hint" id="pMsg"></p>
       <div id="pResult" hidden></div>
     </div>
-  </section>
+  </div>
+</div>
 
-  <aside class="panel" id="panel">
+  <div class="backdrop" id="backdrop" hidden></div>
+  <aside class="panel" id="panel" aria-label="Opciones">
+    <div class="panel-head"><b>Opciones</b><button class="pop-x" id="panelX" aria-label="Cerrar">×</button></div>
     <details open data-visor>
-      <summary>Período</summary>
+      <summary>Información del período</summary>
       <div class="sec">
-        <div class="row"><label for="periodo">Período modelado</label><select id="periodo"></select></div>
         <p class="hint" id="perInfo"></p>
-        <p class="msg" id="perMsg"></p>
       </div>
     </details>
 
@@ -338,7 +388,6 @@ textarea { width: 100%; min-height: 90px; font-family: var(--mono); font-size: 1
     <details open>
       <summary>Fondo y colores</summary>
       <div class="sec">
-        <div class="row"><label for="campo">Campo de fondo</label><select id="campo" data-s></select></div>
         <div data-escala class="row"><label for="paleta">Paleta</label><select id="paleta" data-s></select></div>
         <canvas data-escala id="cmapStrip" width="300" height="12"></canvas>
         <div data-escala class="row"><span class="l">Invertir paleta</span><div class="cell-r"><input type="checkbox" id="invertir" data-s></div></div>
@@ -402,6 +451,7 @@ textarea { width: 100%; min-height: 90px; font-family: var(--mono); font-size: 1
     <details open>
       <summary>Perfiles y mediciones</summary>
       <div class="sec">
+        <div class="btns"><button class="btn primary" id="perfAbrir">Ver perfil vertical</button></div>
         <p class="hint" id="perfHint">Elegí una estación en la lista de arriba del perfil o hacé clic sobre ella en el mapa.</p>
         <div class="row"><span class="l">Mostrar estaciones en el mapa</span><div class="cell-r"><input type="checkbox" id="estOn" checked data-s aria-label="Mostrar estaciones con sus nombres"></div></div>
         <div class="row"><label for="estColor">Color de la estación elegida</label><div class="cell-r"><input type="color" id="estColor" value="#e4572e" data-s></div></div>
@@ -435,7 +485,7 @@ textarea { width: 100%; min-height: 90px; font-family: var(--mono); font-size: 1
         <progress id="prog" value="0" max="1" hidden></progress>
         <p class="hint" id="expMsg"></p>
         <div class="result" id="result" hidden></div>
-        <div class="btns">
+        <div class="btns" data-editor>
           <button class="btn" id="estiloSave">Guardar estilo (.json)</button>
           <label class="btn file-btn" data-editor>Cargar estilo<input type="file" id="estiloIn" accept=".json"></label>
         </div>
@@ -2501,6 +2551,22 @@ if (MODO === "visor") {
   demo();
 }
 (document.fonts && document.fonts.ready ? document.fonts.ready : Promise.resolve()).then(() => schedule());
+/* ---------- Menú de opciones y ventana del perfil (visor) ---------- */
+(() => {
+  const panel = $("panel"), bd = $("backdrop"), btn = $("menuBtn");
+  const abrir = (si) => { panel.classList.toggle("abierto", si); bd.hidden = !si; btn.setAttribute("aria-expanded", String(si)); };
+  btn.onclick = () => abrir(!panel.classList.contains("abierto"));
+  $("panelX").onclick = () => abrir(false); bd.onclick = () => abrir(false);
+  const pm = $("perfModal");
+  const perfil = (si) => { pm.hidden = !si; if (si) { abrir(false); schedule(); } };
+  $("perfAbrir").onclick = () => { if ($("profCard").hidden) { $("perfHint").textContent = "Este período no trae perfiles."; return; } perfil(true); };
+  $("perfX").onclick = () => perfil(false);
+  pm.addEventListener("click", (e) => { if (e.target === pm) perfil(false); });
+  document.addEventListener("keydown", (e) => { if (e.key !== "Escape") return; if (!pm.hidden) perfil(false); else abrir(false); });
+  const orig = elegirEstacionEn;
+  elegirEstacionEn = (px, py) => { const ok = orig(px, py); if (ok && !$("profCard").hidden) perfil(true); return ok; };
+  window.addEventListener("resize", () => schedule());
+})();
 </script>
 
 </body></html>
