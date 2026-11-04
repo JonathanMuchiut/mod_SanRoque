@@ -243,6 +243,7 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .panel-head b { flex: 1; font-size: 15px; }
 .mancha-btn { color: #c026d3; font-size: 17px; }
 .est-btn { font-size: 18px; }
+.borrar-btn { color: #c026d3; font-weight: 700; }
 .est-btn.on { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .mancha-btn.on { background: #c026d3; color: #fff; border-color: #c026d3; }
 .map-hint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); max-width: calc(100% - 24px); margin: 0; z-index: 2;
@@ -340,6 +341,7 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
         <button class="btn icon" id="zFit" title="Mapa completo">⤢</button>
         <button class="btn icon est-btn on" id="estBtn" title="Ver u ocultar las estaciones" aria-pressed="true">◎</button>
         <button class="btn icon mancha-btn" id="manchaBtn" title="Soltar un contaminante" aria-pressed="false">●</button>
+        <button class="btn icon borrar-btn" id="manchaBorrar" title="Borrar todas las manchas" hidden>✕</button>
       </div>
       <p class="map-hint" id="manchaHint" hidden></p>
       <div class="readout" id="readout" hidden></div>
@@ -495,7 +497,7 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
         <p class="hint">Tocá el botón ● sobre el mapa y después un punto del embalse: se suelta una mancha en el instante que estás viendo y se mueve con la velocidad superficial en los instantes siguientes. Es solo advección con un poco de dispersión lateral, no un modelo de transporte.</p>
         <div class="row"><label for="mPart">Partículas</label><input type="number" id="mPart" min="50" max="5000" step="50" value="600"></div>
         <div class="row"><label for="mK">Dispersión lateral [m²/s]</label><input type="number" id="mK" min="0" step="any" value="0.5"></div>
-        <div class="row"><label for="mColor">Color</label><div class="cell-r"><input type="color" id="mColor" value="#c026d3"></div></div>
+        <div class="row"><label for="mColor">Color de la primera mancha</label><div class="cell-r"><input type="color" id="mColor" value="#c026d3"></div></div>
         <div class="btns"><button class="btn" id="mBorrar">Borrar manchas</button></div>
         <p class="hint" id="mInfo"></p>
       </div>
@@ -2709,7 +2711,10 @@ function simularMancha(xm, ym, k0) {
     }
     pos[kv + 1] = Float32Array.from(P);
   }
-  return { k0, x0: xm, y0: ym, pos, color: $("mColor").value, N };
+  // cada mancha nueva con otro color, para distinguirlas (la primera usa el color elegido)
+  const otros = ["#f97316", "#111827", "#ffffff", "#7c2d12", "#db2777", "#facc15"];
+  const color = st.manchas.length ? otros[(st.manchas.length - 1) % otros.length] : $("mColor").value;
+  return { k0, x0: xm, y0: ym, pos, color, N };
 }
 function liberarMancha(px, py) {
   const hint = $("manchaHint");
@@ -2720,7 +2725,10 @@ function liberarMancha(px, py) {
   hint.textContent = "Calculando la trayectoria…";
   setTimeout(() => {
     st.manchas.push(simularMancha(xm, ym, k0));
-    hint.textContent = "Mancha soltada. Tocá Reproducir o avanzá en el tiempo para ver cómo se mueve.";
+    const ult = st.vel.nt - 1, f = (k) => fmtFecha(st.vel, k, "dmyhm");
+    hint.textContent = k0 >= ult
+      ? `Soltada el ${f(k0)}, que es el último instante del período: no tiene tiempo para moverse. Volvé atrás en la barra de tiempo y soltala antes.`
+      : `Mancha ${st.manchas.length} soltada el ${f(k0)}. Se mueve hasta el ${f(ult)}; antes de esa fecha de inicio no se dibuja.`;
     infoManchas(); schedule();
   }, 30);
 }
@@ -2739,6 +2747,7 @@ function drawManchas(k, o) {
   }
 }
 function infoManchas() {
+  $("manchaBorrar").hidden = !st.manchas.length;
   const b = st.vel ? baseDs() : null;
   $("mInfo").textContent = !st.manchas.length ? "" : `${st.manchas.length} mancha${st.manchas.length === 1 ? "" : "s"} · ` +
     st.manchas.map((m) => `desde ${b ? fmtFecha(st.vel, m.k0, "dmyhm") : "cuadro " + (m.k0 + 1)}`).join(" · ");
@@ -2752,6 +2761,7 @@ $("manchaBtn").onclick = () => {
   if (st.manchaModo) $("pop").hidden = true;
 };
 $("mBorrar").onclick = borrarManchas;
+$("manchaBorrar").onclick = borrarManchas;
 { const cp = cargarPeriodo; cargarPeriodo = (buf) => { st.manchas = []; st.busc = null; infoManchas(); return cp(buf); }; }
 /* ---------- Estaciones: botón ver/ocultar y ubicación de las que no traen coordenadas ---------- */
 function syncEstBtn() { const on = $("estOn").checked; $("estBtn").classList.toggle("on", on); $("estBtn").setAttribute("aria-pressed", String(on)); }
