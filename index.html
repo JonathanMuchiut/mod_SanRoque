@@ -240,6 +240,17 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .panel.abierto { transform: none; }
 .panel-head { position: sticky; top: 0; z-index: 1; background: var(--panel); display: flex; justify-content: space-between; align-items: center; padding: 12px 0; border-bottom: 1px solid var(--line); }
 .panel-head .pop-x { position: static; }
+.panel-head b { flex: 1; font-size: 15px; }
+.panel-head .atras { margin-right: 8px; }
+.menu-list { display: grid; padding: 4px 0 14px; }
+.menu-info { padding: 10px 0 6px; }
+.menu-item { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 15px 2px; border: 0; border-bottom: 1px solid var(--line);
+  background: none; color: var(--ink); font-family: var(--ui); font-size: 15px; font-weight: 500; text-align: left; cursor: pointer; }
+.menu-item::after { content: "›"; font-family: var(--mono); font-size: 20px; color: var(--muted); }
+.menu-item:hover { color: var(--accent); }
+.panel details.sub { border-bottom: 0; }
+.panel details.sub > summary { display: none; }
+.panel details.sub > .sec { padding-top: 12px; }
 .backdrop { position: fixed; inset: 0; z-index: 14; background: rgba(8, 18, 22, .35); }
 #perfModal .prof-card { border: 0; padding: 0; background: none; }
 @media (max-width: 640px) {
@@ -354,7 +365,8 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 
   <div class="backdrop" id="backdrop" hidden></div>
   <aside class="panel" id="panel" aria-label="Opciones">
-    <div class="panel-head"><b>Opciones</b><button class="pop-x" id="panelX" aria-label="Cerrar">×</button></div>
+    <div class="panel-head"><button class="btn icon atras" id="panelAtras" aria-label="Volver a Opciones" hidden>‹</button><b id="panelTit">Opciones</b><button class="pop-x" id="panelX" aria-label="Cerrar">×</button></div>
+    <nav class="menu-list" id="menuList" aria-label="Opciones"><p class="hint menu-info" id="menuInfo"></p></nav>
     <details open data-visor>
       <summary>Información del período</summary>
       <div class="sec">
@@ -2554,7 +2566,24 @@ if (MODO === "visor") {
 /* ---------- Menú de opciones y ventana del perfil (visor) ---------- */
 (() => {
   const panel = $("panel"), bd = $("backdrop"), btn = $("menuBtn");
-  const abrir = (si) => { panel.classList.toggle("abierto", si); bd.hidden = !si; btn.setAttribute("aria-expanded", String(si)); };
+  // Lista de submenús: cada sección del panel se abre por separado
+  const secs = [...panel.querySelectorAll(":scope > details")].filter((d) => !d.hidden);
+  const info = secs.find((d) => d.hasAttribute("data-visor")), subs = secs.filter((d) => d !== info);
+  if (info) { info.hidden = true; $("menuInfo").appendChild($("perInfo")); }
+  const lista = $("menuList"), atras = $("panelAtras"), tit = $("panelTit");
+  subs.forEach((d) => {
+    d.classList.add("sub");
+    const b = document.createElement("button"); b.className = "menu-item"; b.type = "button";
+    b.textContent = d.querySelector("summary").textContent.trim(); b.onclick = () => ver(d);
+    lista.appendChild(b);
+  });
+  function ver(d) {
+    lista.hidden = !!d; atras.hidden = !d; tit.textContent = d ? d.querySelector("summary").textContent.trim() : "Opciones";
+    subs.forEach((x) => { x.hidden = x !== d; if (x === d) x.open = true; });
+    panel.scrollTop = 0;
+  }
+  atras.onclick = () => ver(null);
+  const abrir = (si) => { if (si) ver(null); panel.classList.toggle("abierto", si); bd.hidden = !si; btn.setAttribute("aria-expanded", String(si)); };
   btn.onclick = () => abrir(!panel.classList.contains("abierto"));
   $("panelX").onclick = () => abrir(false); bd.onclick = () => abrir(false);
   const pm = $("perfModal");
@@ -2562,7 +2591,7 @@ if (MODO === "visor") {
   $("perfAbrir").onclick = () => { if ($("profCard").hidden) { $("perfHint").textContent = "Este período no trae perfiles."; return; } perfil(true); };
   $("perfX").onclick = () => perfil(false);
   pm.addEventListener("click", (e) => { if (e.target === pm) perfil(false); });
-  document.addEventListener("keydown", (e) => { if (e.key !== "Escape") return; if (!pm.hidden) perfil(false); else abrir(false); });
+  document.addEventListener("keydown", (e) => { if (e.key !== "Escape") return; if (!pm.hidden) perfil(false); else if (!atras.hidden) ver(null); else abrir(false); });
   const orig = elegirEstacionEn;
   elegirEstacionEn = (px, py) => { const ok = orig(px, py); if (ok && !$("profCard").hidden) perfil(true); return ok; };
   window.addEventListener("resize", () => schedule());
