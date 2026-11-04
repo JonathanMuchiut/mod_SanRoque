@@ -1,0 +1,23 @@
+[
+ {
+  "id": "2026-10-27",
+  "nombre": "27 y 28 de octubre de 2026",
+  "archivo": "periodos/periodo_2026-10-27.d3dp",
+  "desde": "2026-10-27 00:00:00",
+  "hasta": "2026-10-28 23:00:00"
+ },
+ {
+  "id": "2026-10-20",
+  "nombre": "20 y 21 de octubre de 2026",
+  "archivo": "periodos/periodo_2026-10-20.d3dp",
+  "desde": "2026-10-20 00:00:00",
+  "hasta": "2026-10-21 23:00:00"
+ },
+ {
+  "id": "2026-10-13",
+  "nombre": "13 y 14 de octubre de 2026",
+  "archivo": "periodos/periodo_2026-10-13.d3dp",
+  "desde": "2026-10-13 00:00:00",
+  "hasta": "2026-10-14 23:00:00"
+ }
+]
