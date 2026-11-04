@@ -451,7 +451,7 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
             <option value="ymdhm">2026-10-28 13:00</option><option value="hm">13:00</option>
             <option value="rel">Horas desde el inicio</option>
           </select></div>
-        <div class="row"><label for="tamFuente">Tamaño de texto [px]</label><input type="number" id="tamFuente" min="8" max="48" step="1" value="16" data-s></div>
+        <div class="row"><label for="tamFuente">Tamaño de texto [px]</label><input type="number" id="tamFuente" min="8" max="48" step="1" value="26" data-s></div>
         <div class="row"><label for="cbPos">Barra de colores</label>
           <select id="cbPos" data-s><option value="derecha">A la derecha</option><option value="abajo">Abajo</option><option value="ninguna">No mostrar</option></select></div>
         <div class="row"><span class="l">Ejes con coordenadas</span><div class="cell-r"><input type="checkbox" id="ejes" checked data-s></div></div>
@@ -732,7 +732,7 @@ function opts() {
     haloOn: false, haloColor: "#ffffff", haloAncho: 0,
     refVel: num("refVel", 0.05), refPos: "abajo-izq",
     titulo: $("titulo").value, fmtFecha: $("fmtFecha").value, fuente: "Calibri",
-    f: Math.max(8, num("tamFuente", 16)), colTexto: "#000000", cbPos: $("cbPos").value,
+    f: Math.max(8, num("tamFuente", 26)), colTexto: "#000000", cbPos: $("cbPos").value,
     cbLabel: "", ejes: chk("ejes"), ejesUnidad: "km",
     escPos: "abajo-der", norte: chk("norte"),
   };
@@ -2221,6 +2221,8 @@ $("panel").addEventListener("input", (e) => {
   schedule(); persist();
 });
 $("panel").addEventListener("change", (e) => { if (e.target.type === "color" || e.target.tagName === "SELECT") { schedule(); persist(); } });
+// La variable está en la barra de arriba (fuera del panel): redibujar al cambiarla
+$("campo").addEventListener("change", () => { onCampoChanged(true); schedule(); persist(); });
 $("vecAuto").onclick = () => autoEscalaVec(true);
 $("ajustarAlto").onclick = () => ajustarAlto(true);
 function syncAuto() { const a = $("autoEsc").checked; $("vmin").disabled = a; $("vmax").disabled = a; }
@@ -2231,6 +2233,7 @@ function estilo() { const o = {}; document.querySelectorAll("[data-s]").forEach(
 function aplicarEstilo(o) {
   for (const [id, v] of Object.entries(o || {})) {
     const el = $(id); if (!el || !el.hasAttribute("data-s") || id === "campo") continue;
+    if (MODO === "visor" && id === "tamFuente") continue; // el visor usa su propio tamaño de letra (26 px)
     if (el.type === "checkbox") el.checked = !!v; else el.value = v;
   }
   syncAuto(); drawStrip(); applySize();
