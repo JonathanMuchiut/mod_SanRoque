@@ -2479,15 +2479,30 @@ function cuantizarD3DV(u8) {
     partes.push(new Uint8Array(c.buffer)); q.segs.push([o, n, lo, paso]); pos = o + n;
   }
   if (pos < f.length) partes.push(new Uint8Array(f.slice(pos).buffer));
-  q.cab = new TextDecoder().decode(u8.subarray(0, H));
+  q.cab = new TextDecoder().decode(u8.subarray(8, H)).trimEnd(); // solo el JSON: el largo binario no sobrevive pasado a texto
   return empaquetar("D3DQ", q, partes);
+}
+function cabeceraD3DV(txt) {
+  // Rearma 'D3DV' + largo + JSON alineado a 4 bytes. Los períodos viejos guardaban también los 8 bytes
+  // binarios pasados a texto: si el largo tenía un byte >= 128 quedaba dañado y el encabezado desalineado.
+  let json = null;
+  for (let i = txt.indexOf("{"); i >= 0 && i <= 12; i = txt.indexOf("{", i + 1)) {
+    const s = txt.slice(i).trimEnd();
+    try { JSON.parse(s); json = s; break; } catch (e) {}
+  }
+  if (json == null) throw new Error("el encabezado del período está dañado.");
+  const js = new TextEncoder().encode(json), pad = (4 - ((8 + js.length) % 4)) % 4;
+  const out = new Uint8Array(8 + js.length + pad);
+  out.set([68, 51, 68, 86]); new DataView(out.buffer).setUint32(4, js.length + pad, true);
+  out.set(js, 8); out.fill(32, 8 + js.length);
+  return out;
 }
 function descuantizarD3DV(buf) {
   const u8 = new Uint8Array(buf);
   if (String.fromCharCode(u8[0], u8[1], u8[2], u8[3]) !== "D3DQ") return buf; // períodos sin cuantizar
   const L = new DataView(buf).getUint32(4, true);
   const q = JSON.parse(new TextDecoder().decode(u8.subarray(8, 8 + L)));
-  const cab = new TextEncoder().encode(q.cab), out = new ArrayBuffer(cab.length + 4 * q.nFloat);
+  const cab = cabeceraD3DV(q.cab), out = new ArrayBuffer(cab.length + 4 * q.nFloat);
   new Uint8Array(out).set(cab);
   const f = new Float32Array(out, cab.length), dv = new DataView(buf);
   let p = 8 + L, pos = 0;
