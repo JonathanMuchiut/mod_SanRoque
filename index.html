@@ -364,6 +364,13 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
         <span class="tlabel" id="pTiempo"></span>
       </div>
       <canvas id="perfil" width="960" height="560" aria-label="Perfil vertical en la estación elegida"></canvas>
+      <div class="timeline">
+        <button class="btn icon" id="pPrev" title="Perfil anterior">‹</button>
+        <button class="btn" id="pPlay">Reproducir</button>
+        <button class="btn icon" id="pNext" title="Perfil siguiente">›</button>
+        <input type="range" id="pSlider" min="0" max="0" value="0" aria-label="Tiempo del perfil">
+        <div class="tlabel" id="pTlabel">—</div>
+      </div>
       <div class="prof-foot">
         <p class="readout" id="pStats"></p>
         <div class="btns"><button class="btn" id="pPng">PNG del perfil</button><button class="btn" id="pCsv">Comparación (.csv)</button></div>
@@ -1211,6 +1218,7 @@ function updateTimeUI() {
   $("tlabel").innerHTML = b ? `${fmtFecha(b, st.k, "ymdhm")} <small>· ${st.k + 1}/${n}</small>` : "—";
 }
 function setFrame(k) {
+  st.pT = null; // la barra del mapa manda: el perfil vuelve a seguirla
   const n = nFrames(); st.k = ((k % n) + n) % n;
   updateTimeUI(); schedule();
 }
@@ -1315,7 +1323,7 @@ function autoEscalaVec(user) {
   if (!st.vel) return;
   const r = autoRange("mag"), o = opts();
   const spacing = o.vecPaso * celdaPx();
-  const esc = 1.1 * spacing / (r.vmax || 0.1);
+  const esc = (MODO === "visor" ? 2.2 : 1.1) * spacing / (r.vmax || 0.1); // en el visor, vectores el doble de largos
   st.escRef = +esc.toPrecision(3);
   $("vecEscala").value = String(+esc.toPrecision(3));
   if (!user) {
@@ -1769,6 +1777,7 @@ function nearestIdx(tms, t) {
   return Math.abs(tms[lo] - t) <= Math.abs(tms[hi] - t) ? lo : hi;
 }
 function perfTi(p) {
+  if (st.pT != null && p.timesOk) return nearestIdx(p.tms, st.pT); // instante elegido en la barra del perfil
   const b = baseDs();
   if (b && b.timesOk && p.timesOk) return nearestIdx(p.tms, b.tms[Math.min(st.k, b.nt - 1)]);
   return Math.min(st.k, p.nt - 1);
@@ -1898,6 +1907,7 @@ function renderPerfil() {
   const aviso = (t) => { c.fillStyle = o.colTexto; c.font = fnt(); c.textAlign = "center"; c.textBaseline = "middle"; c.fillText(t, W / 2, H / 2); };
   if (!sel || !e) { aviso("Sin perfiles para mostrar"); return; }
   const { p, comp } = sel, ti = perfTi(p), r = perfilEn(p, comp, g, ti);
+  syncPTimeline(p, ti);
   $("pTiempo").textContent = r ? `Perfil del ${fmtFecha({ tms: p.tms, tiempos: p.tiempos }, ti, "dmyhm")} · cuadro ${ti + 1}/${p.nt}` : "";
   const nombreV = pVarNombre(p, comp), unidad = p.unidad;
   if (!r) { aviso(`${p.variable}: no hay datos en ${e.nombre}`); $("pStats").textContent = ""; return; }
@@ -2634,7 +2644,7 @@ if (MODO === "visor") {
   btn.onclick = () => abrir(!panel.classList.contains("abierto"));
   $("panelX").onclick = () => abrir(false); bd.onclick = () => abrir(false);
   const pm = $("perfModal");
-  const perfil = (si) => { pm.hidden = !si; if (si) { abrir(false); schedule(); } };
+  const perfil = (si) => { pm.hidden = !si; if (si) { abrir(false); schedule(); } else if (st.pPlaying) pTogglePlay(); };
   $("perfX").onclick = () => perfil(false);
   pm.addEventListener("click", (e) => { if (e.target === pm) perfil(false); });
   document.addEventListener("keydown", (e) => { if (e.key !== "Escape") return; if (!pm.hidden) perfil(false); else if (!atras.hidden) ver(null); else abrir(false); });
@@ -2694,42 +2704,66 @@ function velEn(bu, xm, ym, u, v) {
   return sw > 0 && dmin < 0.9 * bu.h ? [su / sw, sv / sw] : null;
 }
 function gauss() { let a = 0, b = 0; while (!a) a = Math.random(); while (!b) b = Math.random(); return Math.sqrt(-2 * Math.log(a)) * Math.cos(2 * Math.PI * b); }
-function simularMancha(xm, ym, k0) {
-  const g = st.vel, bu = buscador(), N = Math.max(50, Math.min(5000, Math.round(+$("mPart").value || 600)));
-  const K = Math.max(0, +$("mK").value || 0), pos = [];
-  const P = new Float64Array(2 * N);
+function nuevaMancha(xm, ym, k0) {
+  // crea la mancha con su posición inicial; la trayectoria se calcula de a poco (calcularManchas)
+  const bu = buscador(), N = Math.max(50, Math.min(5000, Math.round(+$("mPart").value || 600)));
+  const K = Math.max(0, +$("mK").value || 0), P = new Float64Array(2 * N);
   for (let p = 0; p < N; p++) { P[2 * p] = xm + gauss() * bu.h * 0.15; P[2 * p + 1] = ym + gauss() * bu.h * 0.15; }
-  pos[k0] = Float32Array.from(P);
-  const seg = (kv) => g.timesOk ? (g.tms[kv + 1] - g.tms[kv]) / 1000 : 3600;
-  for (let kv = k0; kv < g.nt - 1; kv++) {
-    const T = seg(kv); if (!(T > 0)) { pos[kv + 1] = Float32Array.from(P); continue; }
-    const nsub = Math.max(1, Math.ceil(T / 600)), dt = T / nsub;
-    const A = velFrame(kv), Bf = velFrame(kv + 1);
+  const pos = []; pos[k0] = Float32Array.from(P);
+  // cada mancha nueva con otro color, para distinguirlas (la primera usa el color elegido)
+  const otros = ["#f97316", "#111827", "#ffffff", "#7c2d12", "#db2777", "#facc15"];
+  const color = st.manchas.length ? otros[(st.manchas.length - 1) % otros.length] : $("mColor").value;
+  return { k0, x0: xm, y0: ym, pos, color, N, P, K, kv: k0, listo: k0 >= st.vel.nt - 1 };
+}
+function avanzarMancha(m) {
+  // mueve las partículas de la salida m.kv a la siguiente
+  const g = st.vel, bu = buscador(), P = m.P, N = m.N, kv = m.kv;
+  const T = g.timesOk ? (g.tms[kv + 1] - g.tms[kv]) / 1000 : 3600;
+  if (T > 0) {
+    const nsub = Math.max(1, Math.ceil(T / 600)), dt = T / nsub, A = velFrame(kv), Bf = velFrame(kv + 1);
     const vel = (x, y, al) => {
       const a = velEn(bu, x, y, A.u, A.v), b = velEn(bu, x, y, Bf.u, Bf.v);
       if (!a || !b) return a || b; return [a[0] + al * (b[0] - a[0]), a[1] + al * (b[1] - a[1])];
     };
     for (let s = 0; s < nsub; s++) {
-      const al = (s + 0.5) / nsub, sd = Math.sqrt(2 * K * dt);
+      const al = (s + 0.5) / nsub, sd = Math.sqrt(2 * m.K * dt);
       for (let p = 0; p < N; p++) {
         const x = P[2 * p], y = P[2 * p + 1];
         const v1 = vel(x, y, s / nsub); if (!v1) continue;
-        const xh = x + v1[0] * dt / 2, yh = y + v1[1] * dt / 2;
-        const v2 = vel(xh, yh, al) || v1;
+        const v2 = vel(x + v1[0] * dt / 2, y + v1[1] * dt / 2, al) || v1;
         let nx = x + v2[0] * dt, ny = y + v2[1] * dt;
         if (sd > 0) {
-          const m = Math.hypot(v2[0], v2[1]), z = gauss() * sd;
-          if (m > 1e-6) { nx += -v2[1] / m * z; ny += v2[0] / m * z; } else { nx += z; ny += gauss() * sd; }
+          const mg = Math.hypot(v2[0], v2[1]), z = gauss() * sd;
+          if (mg > 1e-6) { nx += -v2[1] / mg * z; ny += v2[0] / mg * z; } else { nx += z; ny += gauss() * sd; }
         }
         if (velEn(bu, nx, ny, A.u, A.v)) { P[2 * p] = nx; P[2 * p + 1] = ny; } // si saldría del agua, queda donde estaba
       }
     }
-    pos[kv + 1] = Float32Array.from(P);
   }
-  // cada mancha nueva con otro color, para distinguirlas (la primera usa el color elegido)
-  const otros = ["#f97316", "#111827", "#ffffff", "#7c2d12", "#db2777", "#facc15"];
-  const color = st.manchas.length ? otros[(st.manchas.length - 1) % otros.length] : $("mColor").value;
-  return { k0, x0: xm, y0: ym, pos, color, N };
+  m.pos[kv + 1] = Float32Array.from(P);
+  m.kv = kv + 1;
+  if (m.kv >= g.nt - 1) m.listo = true;
+}
+function avisoMancha(m) {
+  const i = st.manchas.indexOf(m) + 1, ult = st.vel.nt - 1, f = (k) => fmtFecha(st.vel, k, "dmyhm");
+  if (m.k0 >= ult) return `Mancha ${i} soltada el ${f(m.k0)}, que es el último instante del período: no tiene tiempo para moverse. Volvé atrás en la barra de tiempo y soltala antes.`;
+  if (!m.listo) return `Mancha ${i} soltada el ${f(m.k0)}. Calculando su recorrido… ${Math.round(100 * (m.kv - m.k0) / (ult - m.k0))} %`;
+  return `Mancha ${i} soltada el ${f(m.k0)}. Se mueve hasta el ${f(ult)}; antes de esa fecha de inicio no se dibuja.`;
+}
+function calcularManchas() {
+  // calcula las trayectorias en tandas cortas para no congelar la página
+  if (st.calcT) return;
+  const tanda = () => {
+    st.calcT = 0;
+    const m = st.manchas.find((x) => !x.listo); if (!m) return;
+    const t0 = performance.now(), kAntes = m.kv;
+    while (!m.listo && performance.now() - t0 < 25) avanzarMancha(m);
+    if (m === st.manchas[st.manchas.length - 1]) $("manchaHint").textContent = avisoMancha(m);
+    const kVer = matchIdx(st.vel, st.k);
+    if (kVer > kAntes && kVer <= m.kv) schedule(); // apareció el cuadro que se está mirando
+    st.calcT = setTimeout(tanda, 0);
+  };
+  st.calcT = setTimeout(tanda, 0);
 }
 function liberarMancha(px, py) {
   const hint = $("manchaHint");
@@ -2737,15 +2771,10 @@ function liberarMancha(px, py) {
   const bu = buscador(), xm = st.T.iX(px) * bu.mx, ym = st.T.iY(py) * bu.my, k0 = matchIdx(st.vel, st.k);
   const A = velFrame(k0);
   if (!velEn(bu, xm, ym, A.u, A.v)) { hint.textContent = "Ese punto no está en el agua. Tocá dentro del embalse."; return; }
-  hint.textContent = "Calculando la trayectoria…";
-  setTimeout(() => {
-    st.manchas.push(simularMancha(xm, ym, k0));
-    const ult = st.vel.nt - 1, f = (k) => fmtFecha(st.vel, k, "dmyhm");
-    hint.textContent = k0 >= ult
-      ? `Soltada el ${f(k0)}, que es el último instante del período: no tiene tiempo para moverse. Volvé atrás en la barra de tiempo y soltala antes.`
-      : `Mancha ${st.manchas.length} soltada el ${f(k0)}. Se mueve hasta el ${f(ult)}; antes de esa fecha de inicio no se dibuja.`;
-    infoManchas(); schedule();
-  }, 30);
+  const m = nuevaMancha(xm, ym, k0);
+  st.manchas.push(m);                       // se dibuja enseguida en el punto elegido
+  hint.textContent = avisoMancha(m);
+  infoManchas(); schedule(); calcularManchas();
 }
 function drawManchas(k, o) {
   if (!st.manchas.length || !st.vel || !st.T) return;
@@ -2811,6 +2840,44 @@ function ubicarEstaciones() {
   }
 }
 { const cp2 = cargarPeriodo; cargarPeriodo = (buf) => { const m = cp2(buf); ubicarEstaciones(); syncEstBtn(); schedule(); return m; }; }
+/* ---------- Barra de tiempo del perfil ---------- */
+st.pT = null; st.pPlaying = false;
+let pTimer = 0;
+function syncPTimeline(p, ti) {
+  $("pSlider").max = String(p.nt - 1); $("pSlider").value = String(ti);
+  $("pTlabel").innerHTML = `${fmtFecha({ tms: p.tms, tiempos: p.tiempos }, ti, "ymdhm")} <small>· ${ti + 1}/${p.nt}</small>`;
+}
+function perfIrA(i) {
+  // mueve el perfil a su salida i y el mapa al instante más cercano
+  const sel = pVarSel(); if (!sel) return;
+  const p = sel.p; i = ((i % p.nt) + p.nt) % p.nt;
+  const b = baseDs();
+  if (p.timesOk) { st.pT = p.tms[i]; if (b && b.timesOk) st.k = nearestIdx(b.tms, st.pT); }
+  else { st.pT = null; st.k = Math.min(i, nFrames() - 1); }
+  updateTimeUI(); schedule();
+}
+function pTogglePlay() {
+  st.pPlaying = !st.pPlaying; $("pPlay").textContent = st.pPlaying ? "Pausa" : "Reproducir";
+  clearTimeout(pTimer);
+  if (st.pPlaying) { if (st.playing) togglePlay(); pTick(); }
+}
+function pTick() {
+  if (!st.pPlaying) return;
+  const sel = pVarSel(); if (!sel) { pTogglePlay(); return; }
+  perfIrA(perfTi(sel.p) + 1);
+  pTimer = setTimeout(pTick, Math.max(30, parseInt($("retardo").value) || 200));
+}
+$("pSlider").addEventListener("input", (e) => perfIrA(parseInt(e.target.value)));
+$("pPrev").onclick = () => { const sel = pVarSel(); if (sel) perfIrA(perfTi(sel.p) - 1); };
+$("pNext").onclick = () => { const sel = pVarSel(); if (sel) perfIrA(perfTi(sel.p) + 1); };
+$("pPlay").onclick = pTogglePlay;
+{ const cp3 = cargarPeriodo; cargarPeriodo = (buf) => { st.pT = null; if (st.pPlaying) pTogglePlay(); return cp3(buf); }; }
+/* ---------- Vectores del visor: el doble de la escala guardada en el período ---------- */
+{ const cp4 = cargarPeriodo; cargarPeriodo = (buf) => {
+  const m = cp4(buf), v = m && m.estilo ? parseFloat(m.estilo.vecEscala) : NaN;
+  if (MODO === "visor" && v > 0) { $("vecEscala").value = String(+(2 * v).toPrecision(3)); schedule(); }
+  return m;
+}; }
 </script>
 
 </body></html>
