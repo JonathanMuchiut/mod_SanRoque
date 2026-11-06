@@ -226,6 +226,21 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .tc span { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
 .tc select { width: auto; min-width: 0; max-width: 46vw; }
 .menu-btn { flex: none; }
+.alerta-btn { color: var(--warn); border-color: var(--warn); }
+.al-card { width: min(1000px, 100%); }
+.al-sec { display: grid; gap: 6px; padding-top: 6px; border-top: 1px solid var(--line); }
+.al-h { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; }
+.al-umbral { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); }
+.al-umbral input { width: 80px; }
+.al-cv { display: block; width: 100%; height: clamp(190px, 30vh, 280px); background: var(--field); border: 1px solid var(--line); border-radius: 4px; cursor: crosshair; }
+.al-ley { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; }
+.al-ley span { display: inline-flex; align-items: center; gap: 6px; }
+.al-ley i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; }
+.al-ahora { display: flex; flex-wrap: wrap; gap: 8px; }
+.al-chip { border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 13px; line-height: 1.35; background: var(--field); }
+.al-chip b { display: block; font-size: 12px; color: var(--muted); font-weight: 600; }
+.al-chip.on { border-color: var(--warn); }
+.al-chip.on strong { color: var(--warn); }
 .app { flex: 1; min-height: 0; display: flex; flex-direction: column; align-items: stretch; padding-block: 8px; }
 .stage { position: static; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
 .canvas-wrap { flex: 1; min-height: 0; padding: 6px; }
@@ -251,6 +266,14 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .panel-head .atras { margin-right: 8px; }
 .menu-list { display: grid; padding: 4px 0 14px; }
 .menu-info { padding: 10px 0 6px; }
+.info-txt { margin: 0 0 12px; line-height: 1.5; }
+.refs { list-style: none; margin: 0; padding: 0; display: grid; gap: 12px; }
+.refs li { padding: 0 0 12px; border-bottom: 1px solid var(--line); line-height: 1.45; }
+.refs li:last-child { border-bottom: 0; }
+.refs .tipo { display: inline-block; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin-bottom: 2px; }
+.refs .tit { font-weight: 600; }
+.refs .apa, .refs li { text-indent: 0; }
+.refs a { color: var(--accent); word-break: break-word; }
 .menu-item { display: flex; justify-content: space-between; align-items: center; width: 100%; padding: 15px 2px; border: 0; border-bottom: 1px solid var(--line);
   background: none; color: var(--ink); font-family: var(--ui); font-size: 15px; font-weight: 500; text-align: left; cursor: pointer; }
 .menu-item::after { content: "›"; font-family: var(--mono); font-size: 20px; color: var(--muted); }
@@ -283,7 +306,8 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
   <div class="top-ctrl">
     <label class="tc"><span>Período</span><select id="periodo"></select></label>
     <label class="tc"><span>Variable</span><select id="campo" data-s></select></label>
-    <button class="btn menu-btn" id="menuBtn" aria-expanded="false" aria-controls="panel">☰ Opciones</button>
+    <button class="btn menu-btn alerta-btn" id="alertaBtn" aria-haspopup="dialog">⚠ Alerta</button>
+    <button class="btn menu-btn" id="menuBtn" aria-expanded="false" aria-controls="panel">☰ Configuración</button>
   </div>
 </header>
 
@@ -354,6 +378,28 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
       <div class="tlabel" id="tlabel">—</div>
     </div>
   </section>
+<div class="modal" id="alertaModal" hidden>
+  <div class="modal-card al-card" role="dialog" aria-modal="true" aria-labelledby="alTit">
+    <div class="modal-head"><div><div class="modal-tit" id="alTit">Alerta</div><div class="modal-sub" id="alSub"></div></div><button class="pop-x" id="alX" aria-label="Cerrar">×</button></div>
+    <div class="al-ahora" id="alAhora"></div>
+    <section class="al-sec">
+      <div class="al-h"><b>Clorofila-a superficial máxima</b>
+        <label class="al-umbral">Umbral <input type="number" id="alUmbral" min="0" step="any" placeholder="—" aria-label="Umbral de clorofila"> <span id="alUni">µg/l</span></label></div>
+      <p class="hint">Máximo en todo el embalse en cada instante. Para que un pico en una sola celda no dispare la alerta, cada celda toma primero la mediana de ella y sus vecinas (3×3); la línea gris punteada es el máximo sin filtrar.</p>
+      <canvas class="al-cv" id="alCl" aria-label="Serie de clorofila-a superficial máxima"></canvas>
+      <p class="hint" id="alClMsg" hidden></p>
+    </section>
+    <section class="al-sec">
+      <div class="al-h"><b>Estratificación térmica en las estaciones</b></div>
+      <p class="hint">Máximo gradiente vertical de temperatura en la columna de agua (descenso de temperatura por metro de profundidad). Por encima de 1 °C/m la columna se considera estratificada.</p>
+      <canvas class="al-cv" id="alSt" aria-label="Serie del gradiente térmico máximo por estación"></canvas>
+      <div class="al-ley" id="alLey"></div>
+      <p class="hint" id="alStMsg" hidden></p>
+    </section>
+    <p class="hint">Tocá un gráfico para llevar el mapa a ese instante.</p>
+  </div>
+</div>
+
 <div class="modal" id="perfModal" hidden>
   <div class="modal-card" role="dialog" aria-modal="true" aria-label="Perfil vertical">
     <div class="modal-head"><div><div class="modal-tit">Perfil vertical</div></div><button class="pop-x" id="perfX" aria-label="Cerrar">×</button></div>
@@ -382,9 +428,9 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 </div>
 
   <div class="backdrop" id="backdrop" hidden></div>
-  <aside class="panel" id="panel" aria-label="Opciones">
-    <div class="panel-head"><button class="btn icon atras" id="panelAtras" aria-label="Volver a Opciones" hidden>‹</button><b id="panelTit">Opciones</b><button class="pop-x" id="panelX" aria-label="Cerrar">×</button></div>
-    <nav class="menu-list" id="menuList" aria-label="Opciones"><p class="hint menu-info" id="menuInfo"></p></nav>
+  <aside class="panel" id="panel" aria-label="Configuración">
+    <div class="panel-head"><button class="btn icon atras" id="panelAtras" aria-label="Volver a Configuración" hidden>‹</button><b id="panelTit">Configuración</b><button class="pop-x" id="panelX" aria-label="Cerrar">×</button></div>
+    <nav class="menu-list" id="menuList" aria-label="Configuración"><p class="hint menu-info" id="menuInfo"></p></nav>
     <details open data-visor>
       <summary>Información del período</summary>
       <div class="sec">
@@ -504,6 +550,8 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
         <p class="hint">Tocá el botón ● sobre el mapa y después un punto del embalse: se suelta una mancha en el instante que estás viendo y se mueve con la velocidad superficial en los instantes siguientes. Es solo advección con un poco de dispersión lateral, no un modelo de transporte.</p>
         <div class="row"><label for="mPart">Partículas</label><input type="number" id="mPart" min="50" max="5000" step="50" value="600"></div>
         <div class="row"><label for="mK">Dispersión lateral [m²/s]</label><input type="number" id="mK" min="0" step="any" value="0.5"></div>
+        <div class="row"><label for="mInter">Cuadros intermedios entre salidas</label><input type="number" id="mInter" min="1" max="30" step="1" value="6"></div>
+        <p class="hint">Al reproducir o generar el GIF con manchas, se dibujan esos pasos entre una salida del modelo y la siguiente, así la mancha se desplaza de forma continua. El fondo y los vectores siguen mostrando la última salida; 1 = sin intermedios.</p>
         <div class="row"><label for="mColor">Color de la primera mancha</label><div class="cell-r"><input type="color" id="mColor" value="#c026d3"></div></div>
         <div class="btns"><button class="btn" id="mBorrar">Borrar manchas</button></div>
         <p class="hint" id="mInfo"></p>
@@ -530,6 +578,12 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
           <button class="btn" id="estiloSave">Guardar estilo (.json)</button>
           <label class="btn file-btn" data-editor>Cargar estilo<input type="file" id="estiloIn" accept=".json"></label>
         </div>
+      </div>
+    </details>
+    <details>
+      <summary>Información</summary>
+      <div class="sec" id="infoSec">
+        <p class="hint">Cargando…</p>
       </div>
     </details>
   </aside>
@@ -674,6 +728,12 @@ function matchIdx(ds, k) {
     return Math.abs(ds.tms[lo] - t) <= Math.abs(ds.tms[hi] - t) ? lo : hi;
   }
   return Math.min(k, ds.nt - 1);
+}
+function fmtFechaF(ds, k, f, fmt) {
+  // fecha de un instante intermedio entre la salida k y la k+1 (f entre 0 y 1)
+  if (!(f > 0) || !ds.timesOk || k >= ds.nt - 1) return fmtFecha(ds, k, fmt);
+  const ms = ds.tms[k] + f * (ds.tms[k + 1] - ds.tms[k]);
+  return fmtFecha({ tms: [ds.tms[0], ms], tiempos: ["", ""] }, 1, fmt);
 }
 function fmtFecha(ds, k, fmt) {
   const ms = ds.tms[k];
@@ -1169,7 +1229,7 @@ function drawColorbar(o, map, sc, campo) {
   }
 }
 
-function render(k = st.k, fast = false) {
+function render(k = st.k, fast = false, f = 0) {
   const o = opts(), W = cv.width, H = cv.height;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.fillStyle = o.colFondo; ctx.fillRect(0, 0, W, H);
@@ -1191,14 +1251,14 @@ function render(k = st.k, fast = false) {
   if (o.vecOn && st.vel && !fast) drawVectors(o, k, map);
   drawNorth(o, map); drawScaleBar(o, map, g); if (!fast) drawRef(o, map);
   drawStations();
-  drawManchas(k, o);
+  drawManchas(k, o, f);
   ctx.restore();
   ctx.strokeStyle = o.colTexto; ctx.lineWidth = 1; ctx.strokeRect(map.x + 0.5, map.y + 0.5, map.w - 1, map.h - 1);
   if (o.ejes) drawAxes(o, map, g);
   if (sc && o.cbPos !== "ninguna") drawColorbar(o, map, sc, o.campo);
   if (o.titulo.trim()) {
     const base = baseDs();
-    const t = o.titulo.replaceAll("{fecha}", fmtFecha(base, Math.min(k, base.nt - 1), o.fmtFecha)).replaceAll("{campo}", campoNombre(o.campo));
+    const t = o.titulo.replaceAll("{fecha}", fmtFechaF(base, Math.min(k, base.nt - 1), f, o.fmtFecha)).replaceAll("{campo}", campoNombre(o.campo));
     ctx.font = font(o, 1.12, 600); ctx.fillStyle = o.colTexto; ctx.textAlign = "left"; ctx.textBaseline = "top";
     ctx.fillText(t, map.x, o.f * 0.75);
   }
@@ -1209,16 +1269,16 @@ function render(k = st.k, fast = false) {
 function schedule(fast = false) {
   st.fastNext = fast;
   if (st.raf) return;
-  st.raf = requestAnimationFrame(() => { st.raf = 0; render(st.k, st.fastNext); actualizarPopup(); dibujarSerie(); if (!st.fastNext) renderPerfil(); });
+  st.raf = requestAnimationFrame(() => { st.raf = 0; render(st.k, st.fastNext, st.f || 0); actualizarPopup(); dibujarAlerta(); dibujarSerie(); if (!st.fastNext) renderPerfil(); });
 }
 function nFrames() { const b = baseDs(); return b ? b.nt : 1; }
 function updateTimeUI() {
   const n = nFrames(), b = baseDs();
   $("slider").max = String(n - 1); $("slider").value = String(st.k);
-  $("tlabel").innerHTML = b ? `${fmtFecha(b, st.k, "ymdhm")} <small>· ${st.k + 1}/${n}</small>` : "—";
+  $("tlabel").innerHTML = b ? `${fmtFechaF(b, st.k, st.f || 0, "ymdhm")} <small>· ${st.k + 1}/${n}</small>` : "—";
 }
 function setFrame(k) {
-  st.pT = null; // la barra del mapa manda: el perfil vuelve a seguirla
+  st.pT = null; st.f = 0; // la barra del mapa manda: el perfil vuelve a seguirla
   const n = nFrames(); st.k = ((k % n) + n) % n;
   updateTimeUI(); schedule();
 }
@@ -1255,7 +1315,7 @@ function onDataChanged(newGrid) {
   fillCampo();
   if (newGrid && st.vel) { $("campo").value = "mag"; $("vecOn").checked = true; $("paleta").value = "jet"; $("invertir").checked = false; }
   updateChips(); onCampoChanged(false);
-  const n = nFrames(); st.k = Math.min(st.k, n - 1);
+  const n = nFrames(); st.k = Math.min(st.k, n - 1); st.f = 0;
   $("desde").max = $("hasta").max = String(n); $("desde").value = "1"; $("hasta").value = String(n);
   if (newGrid && gridDs()) ajustarAlto(false);
   autoEscalaVec(false);
@@ -2231,10 +2291,18 @@ function togglePlay() {
   clearTimeout(playTimer);
   if (st.playing) tick();
 }
+function nInter() {
+  // pasos intermedios entre salidas: solo hacen falta si hay manchas
+  if (!st.manchas || !st.manchas.length || !st.vel) return 1;
+  return Math.max(1, Math.min(30, Math.round(+$("mInter").value || 1)));
+}
 function tick() {
   if (!st.playing) return;
-  setFrame(st.k + 1);
-  playTimer = setTimeout(tick, Math.max(30, parseInt($("retardo").value) || 200));
+  const n = nInter(), ret = Math.max(30, parseInt($("retardo").value) || 200);
+  if (n > 1 && st.k < nFrames() - 1 && (st.f || 0) + 1 / n < 1 - 1e-9) {
+    st.f = (st.f || 0) + 1 / n; updateTimeUI(); schedule();
+  } else setFrame(st.k + 1);
+  playTimer = setTimeout(tick, n > 1 ? Math.max(30, ret / n) : ret);
 }
 $("play").onclick = togglePlay;
 $("prev").onclick = () => setFrame(st.k - 1);
@@ -2399,7 +2467,14 @@ $("gifBtn").onclick = async () => {
     if (b < a) [a, b] = [b, a];
     const paso = Math.max(1, parseInt($("pasoGif").value) || 1), frames = [];
     for (let k = a; k <= b; k += paso) frames.push(k);
-    const W = cv.width, H = cv.height, delay = Math.max(2, Math.round((parseInt($("retardo").value) || 200) / 10));
+    // con manchas, pasos intermedios entre cada par de cuadros: [k, fracción]
+    const nI = nInter(), cuadros = [];
+    frames.forEach((k, i) => {
+      cuadros.push([k, 0]);
+      if (nI > 1 && i < frames.length - 1)
+        for (let j = 1; j < nI; j++) { const u = k + j * (frames[i + 1] - k) / nI, ku = Math.floor(u); cuadros.push([ku, u - ku]); }
+    });
+    const W = cv.width, H = cv.height, delay = Math.max(2, Math.round((parseInt($("retardo").value) || 200) / nI / 10));
     msg.textContent = "Preparando la paleta de colores…"; await pausa();
     const muestras = [];
     for (const k of [...new Set([frames[0], frames[Math.floor(frames.length / 2)], frames[frames.length - 1]])]) {
@@ -2409,19 +2484,19 @@ $("gifBtn").onclick = async () => {
     const out = new Bytes();
     out.str("GIF89a"); out.u16(W); out.u16(H); out.byte(0xF7); out.byte(0); out.byte(0); out.bytes(P.pal);
     out.byte(0x21); out.byte(0xFF); out.byte(11); out.str("NETSCAPE2.0"); out.byte(3); out.byte(1); out.u16(0); out.byte(0);
-    for (let i = 0; i < frames.length; i++) {
-      render(frames[i], false);
+    for (let i = 0; i < cuadros.length; i++) {
+      render(cuadros[i][0], false, cuadros[i][1]);
       const idx = indexFrame(ctx.getImageData(0, 0, W, H).data, P);
       out.byte(0x21); out.byte(0xF9); out.byte(4); out.byte(0x04); out.u16(delay); out.byte(0); out.byte(0);
       out.byte(0x2C); out.u16(0); out.u16(0); out.u16(W); out.u16(H); out.byte(0);
       lzw(out, idx, 8);
-      prog.value = (i + 1) / frames.length;
-      msg.textContent = `Codificando cuadro ${i + 1} de ${frames.length}…`;
+      prog.value = (i + 1) / cuadros.length;
+      msg.textContent = `Codificando cuadro ${i + 1} de ${cuadros.length}…`;
       await pausa();
     }
     out.byte(0x3B);
     const blob = new Blob([out.result()], { type: "image/gif" });
-    msg.textContent = `GIF listo: ${frames.length} cuadros, ${(blob.size / 1048576).toFixed(1)} MB.`;
+    msg.textContent = `GIF listo: ${cuadros.length} cuadros, ${(blob.size / 1048576).toFixed(1)} MB.`;
     mostrarResultado(blob, true);
     await guardar(blob, `${baseNombre()}.gif`, true);
   } catch (e) {
@@ -2574,7 +2649,7 @@ function cargarPeriodo(buf) {
   st.vel = null; st.escs = []; st.est = res.est; st.perf = res.perf; st.envCache = {}; st.selEst = Math.min(st.selEst, Math.max(0, res.est.length - 1));
   for (const ds of res.campos) { if (ds.tipo === "vector") st.vel = ds; else st.escs.push(ds); }
   st.meds = (meta.mediciones || []).map(([estTxt, t, z, varTxt, v]) => ({ est: normTxt(estTxt), estTxt, t, z, varTxt, varc: canonVar(varTxt), v }));
-  st.medsDemo = false; st.medCache = {}; st.demo = !!meta.ejemplo; st.k = 0;
+  st.medsDemo = false; st.medCache = {}; st.demo = !!meta.ejemplo; st.k = 0; st.f = 0;
   fillPerfilUI(); infoMediciones();
   onDataChanged(true);
   if (meta.estilo) { aplicarEstilo(meta.estilo); }
@@ -2635,7 +2710,7 @@ if (MODO === "visor") {
     lista.appendChild(b);
   });
   function ver(d) {
-    lista.hidden = !!d; atras.hidden = !d; tit.textContent = d ? d.querySelector("summary").textContent.trim() : "Opciones";
+    lista.hidden = !!d; atras.hidden = !d; tit.textContent = d ? d.querySelector("summary").textContent.trim() : "Configuración";
     subs.forEach((x) => { x.hidden = x !== d; if (x === d) x.open = true; });
     panel.scrollTop = 0;
   }
@@ -2725,7 +2800,9 @@ function avanzarMancha(m) {
       const a = velEn(bu, x, y, A.u, A.v), b = velEn(bu, x, y, Bf.u, Bf.v);
       if (!a || !b) return a || b; return [a[0] + al * (b[0] - a[0]), a[1] + al * (b[1] - a[1])];
     };
+    const fotos = [];
     for (let s = 0; s < nsub; s++) {
+      if (s > 0) fotos.push(Float32Array.from(P)); // posición tras cada subpaso, para dibujar instantes intermedios
       const al = (s + 0.5) / nsub, sd = Math.sqrt(2 * m.K * dt);
       for (let p = 0; p < N; p++) {
         const x = P[2 * p], y = P[2 * p + 1];
@@ -2739,6 +2816,7 @@ function avanzarMancha(m) {
         if (velEn(bu, nx, ny, A.u, A.v)) { P[2 * p] = nx; P[2 * p + 1] = ny; } // si saldría del agua, queda donde estaba
       }
     }
+    (m.sub || (m.sub = []))[kv] = fotos;
   }
   m.pos[kv + 1] = Float32Array.from(P);
   m.kv = kv + 1;
@@ -2776,12 +2854,35 @@ function liberarMancha(px, py) {
   hint.textContent = avisoMancha(m);
   infoManchas(); schedule(); calcularManchas();
 }
-function drawManchas(k, o) {
+function instanteVel(k, f) {
+  // salida de velocidad kv y fracción fr hacia la siguiente, para el cuadro k + f de la barra
+  const g = st.vel, base = baseDs();
+  if (!(f > 0) || !base || k >= base.nt - 1) return [matchIdx(g, k), 0];
+  if (!(base.timesOk && g.timesOk)) return [Math.min(k, g.nt - 1), k < g.nt - 1 ? f : 0];
+  const t = base.tms[k] + f * (base.tms[k + 1] - base.tms[k]);
+  if (t <= g.tms[0]) return [0, 0];
+  if (t >= g.tms[g.nt - 1]) return [g.nt - 1, 0];
+  let lo = 0, hi = g.nt - 1;
+  while (hi - lo > 1) { const mid = (lo + hi) >> 1; if (g.tms[mid] <= t) lo = mid; else hi = mid; }
+  return [lo, (t - g.tms[lo]) / (g.tms[lo + 1] - g.tms[lo])];
+}
+function posMancha(m, kv, fr) {
+  // posiciones de las partículas entre la salida kv y la kv+1, interpolando entre subpasos
+  const A0 = m.pos[kv], B0 = m.pos[kv + 1], fotos = m.sub && m.sub[kv];
+  if (!(fr > 0) || !B0 || !fotos) return A0;
+  const n = fotos.length + 1, j = fr * n, i = Math.min(n - 1, Math.floor(j)), a = j - i;
+  const A = i === 0 ? A0 : fotos[i - 1], B = i + 1 >= n ? B0 : fotos[i];
+  if (a <= 0) return A;
+  const out = new Float32Array(A.length);
+  for (let q = 0; q < A.length; q++) out[q] = A[q] + a * (B[q] - A[q]);
+  return out;
+}
+function drawManchas(k, o, f = 0) {
   if (!st.manchas.length || !st.vel || !st.T) return;
-  const bu = buscador(), kv = matchIdx(st.vel, k), T = st.T, r = Math.max(2.5, o.f * 0.15);
+  const bu = buscador(), [kv, fr] = instanteVel(k, f), T = st.T, r = Math.max(2.5, o.f * 0.15);
   for (const m of st.manchas) {
     if (kv < m.k0 || !m.pos[kv]) continue;
-    const P = m.pos[kv];
+    const P = posMancha(m, kv, fr);
     ctx.globalAlpha = 0.7; ctx.fillStyle = m.color; ctx.beginPath();
     for (let p = 0; p < m.N; p++) { const x = T.X(P[2 * p] / bu.mx), y = T.Y(P[2 * p + 1] / bu.my); ctx.moveTo(x + r, y); ctx.arc(x, y, r, 0, 2 * Math.PI); }
     ctx.fill(); ctx.globalAlpha = 1;
@@ -2852,6 +2953,7 @@ function perfIrA(i) {
   const sel = pVarSel(); if (!sel) return;
   const p = sel.p; i = ((i % p.nt) + p.nt) % p.nt;
   const b = baseDs();
+  st.f = 0;
   if (p.timesOk) { st.pT = p.tms[i]; if (b && b.timesOk) st.k = nearestIdx(b.tms, st.pT); }
   else { st.pT = null; st.k = Math.min(i, nFrames() - 1); }
   updateTimeUI(); schedule();
@@ -2878,6 +2980,248 @@ $("pPlay").onclick = pTogglePlay;
   if (MODO === "visor" && v > 0) { $("vecEscala").value = String(+(2 * v).toPrecision(3)); schedule(); }
   return m;
 }; }
+/* ---------- Información: trabajos en los que se basa el modelo (informacion.json) ---------- */
+(async () => {
+  const sec = $("infoSec"), e = (t) => String(t ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+  try {
+    const r = await fetch("informacion.json", { cache: "no-cache" });
+    if (!r.ok) throw new Error(r.status);
+    const inf = await r.json(), refs = Array.isArray(inf.referencias) ? inf.referencias : [];
+    const parr = (inf.texto ? [].concat(inf.texto) : []).map((t) => `<p class="info-txt">${e(t)}</p>`).join("");
+    const lis = refs.map((x) => {
+      const url = /^https?:\/\//i.test(x.url || "") ? x.url : "";
+      // "cita": referencia ya armada (por ejemplo en APA); lo que va entre *asteriscos* sale en cursiva
+      if (x.cita) return `<li>${x.tipo ? `<span class="tipo">${e(x.tipo)}</span><br>` : ""}${e(x.cita).replace(/\*([^*]+)\*/g, "<em>$1</em>").replace(/https?:\/\/[^\s<]+[^\s<.,;)]/g, (u) => `<a href="${u}" target="_blank" rel="noopener">${u}</a>`)}` +
+        `${url ? `<br><a href="${e(url)}" target="_blank" rel="noopener">${e(x.enlace_texto || url)}</a>` : ""}</li>`;
+      return `<li>${x.tipo ? `<span class="tipo">${e(x.tipo)}</span><br>` : ""}` +
+        `${e(x.autores)}${x.anio ? ` (${e(x.anio)})` : ""}. <span class="tit">${e(x.titulo)}</span>.` +
+        `${x.publicado_en ? ` ${e(x.publicado_en)}.` : ""}` +
+        `${url ? `<br><a href="${e(url)}" target="_blank" rel="noopener">${e(x.enlace_texto || url)}</a>` : ""}</li>`;
+    }).join("");
+    sec.innerHTML = parr + (lis ? `<ul class="refs">${lis}</ul>` : `<p class="hint">Todavía no hay trabajos cargados.</p>`);
+  } catch (err) {
+    sec.innerHTML = `<p class="hint">No se encontró la información del modelo (informacion.json).</p>`;
+  }
+})();
+/* ---------- Alerta: clorofila superficial máxima y estratificación térmica ---------- */
+const AL_GRAD = 1;           // °C/m: por encima, columna estratificada
+const AL_COLORES = ["#0b6f78", "#d55e00", "#7b3fa0", "#2a7fd4", "#b8860b", "#c2185b", "#4d7c0f", "#5c6b73"];
+let alCache = null;
+function alClorofila() {
+  return st.escs.find((e) => canonVar(e.variable) === "clorofila") || null;
+}
+function alTemperatura() {
+  return st.perf.find((p) => p.tipo !== "vector" && canonVar(p.variable) === "temperatura") || null;
+}
+function alSerieClorofila(ds) {
+  // máximo filtrado (mediana 3x3 de celdas con dato) y máximo crudo, en cada instante
+  const N = ds.N, M = ds.M, fil = new Float64Array(ds.nt), cru = new Float64Array(ds.nt), dónde = new Int32Array(ds.nt), w = [];
+  for (let k = 0; k < ds.nt; k++) {
+    const a = escFrame(ds, k); let mf = -Infinity, mc = -Infinity, im = -1;
+    for (let m = 0; m < M; m++) for (let n = 0; n < N; n++) {
+      const i = n + N * m, v = a[i]; if (!Number.isFinite(v)) continue;
+      if (v > mc) mc = v;
+      w.length = 0;
+      for (let dm = -1; dm <= 1; dm++) for (let dn = -1; dn <= 1; dn++) {
+        const mm = m + dm, nn = n + dn; if (mm < 0 || nn < 0 || mm >= M || nn >= N) continue;
+        const q = a[nn + N * mm]; if (Number.isFinite(q)) w.push(q);
+      }
+      if (w.length < 4) continue;          // celda casi aislada: no cuenta
+      w.sort((x, y) => x - y);
+      const med = w.length % 2 ? w[(w.length - 1) / 2] : 0.5 * (w[w.length / 2 - 1] + w[w.length / 2]);
+      if (med > mf) { mf = med; im = i; }
+    }
+    fil[k] = mf > -Infinity ? mf : NaN; cru[k] = mc > -Infinity ? mc : NaN; dónde[k] = im;
+  }
+  return { fil, cru, donde: dónde };
+}
+function alGradientes(p) {
+  // por estación: máximo descenso de temperatura por metro y su profundidad, en cada instante
+  return p.idx.map((g) => {
+    const v = new Float64Array(p.nt).fill(NaN), z = new Float64Array(p.nt).fill(NaN);
+    for (let ti = 0; ti < p.nt; ti++) {
+      const r = perfilEn(p, "s", g, ti); if (!r || !r.conZ || r.pts.length < 2) continue;
+      let best = -Infinity, zb = NaN;
+      for (let j = 1; j < r.pts.length; j++) {
+        const a = r.pts[j - 1], b = r.pts[j], dz = b.z - a.z; if (!(dz > 0.05)) continue;
+        const gr = (a.v - b.v) / dz; if (gr > best) { best = gr; zb = 0.5 * (a.z + b.z); }
+      }
+      if (best > -Infinity) { v[ti] = best; z[ti] = zb; }
+    }
+    const val = [...v].filter(Number.isFinite);
+    return { g, nombre: st.est[g] ? st.est[g].nombre : `Estación ${g + 1}`, v, z, pct: val.length ? 100 * val.filter((x) => x > AL_GRAD).length / val.length : NaN };
+  });
+}
+function alDatos() {
+  const cl = alClorofila(), tp = alTemperatura(), key = `${st.gridId}|${st.escs.indexOf(cl)}|${st.perf.indexOf(tp)}|${cl ? cl.nt : 0}|${tp ? tp.nt : 0}`;
+  if (alCache && alCache.key === key && alCache.cl === cl && alCache.tp === tp) return alCache;
+  alCache = { key, cl, tp, scl: cl ? alSerieClorofila(cl) : null, gr: tp ? alGradientes(tp) : null };
+  return alCache;
+}
+function alTiempoActual() {
+  const b = baseDs(); if (!b) return NaN;
+  const k = Math.min(st.k, b.nt - 1), f = st.f || 0;
+  if (!b.timesOk) return NaN;
+  return k < b.nt - 1 && f > 0 ? b.tms[k] + f * (b.tms[k + 1] - b.tms[k]) : b.tms[k];
+}
+function alGeom(c, x0, x1, y0, y1) {
+  const W = c.clientWidth, H = c.clientHeight, L = 58, R = 14, T = 12, B = 30;
+  return { W, H, L, R, T, B, X: (t) => L + (t - x0) / ((x1 - x0) || 1) * (W - L - R), iX: (px) => x0 + (px - L) / (W - L - R) * (x1 - x0), Y: (v) => H - B - (v - y0) / ((y1 - y0) || 1) * (H - T - B) };
+}
+function alTicks(lo, hi) {
+  const span = hi - lo || 1, raw = span / 5, p = 10 ** Math.floor(Math.log10(raw)), m = raw / p;
+  const step = (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * p, ticks = [];
+  for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-9; v += step) ticks.push(+v.toPrecision(12));
+  return { ticks, step };
+}
+function alGrafico(c, series, op) {
+  // series: [{ x:[], v:[], color, ancho, guiones }]; op: { x0, x1, y0, y1, unidad, umbral, sombraArriba, cursor, fechas }
+  const dpr = window.devicePixelRatio || 1, r = c.getBoundingClientRect();
+  if (!r.width) return null;
+  if (c.width !== Math.round(r.width * dpr) || c.height !== Math.round(r.height * dpr)) { c.width = Math.round(r.width * dpr); c.height = Math.round(r.height * dpr); }
+  const x = c.getContext("2d"); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const cs = getComputedStyle(document.documentElement), col = (v) => cs.getPropertyValue(v).trim();
+  const ink = col("--ink"), muted = col("--muted"), line = col("--line"), warn = col("--warn");
+  const G = alGeom(c, op.x0, op.x1, op.y0, op.y1), { W, H, L, R, T, B, X, Y } = G;
+  const fnt = (s, w = 400) => `${w} ${s}px "Calibri", "Carlito", Arial, sans-serif`;
+  x.clearRect(0, 0, W, H);
+  if (Number.isFinite(op.umbral) && op.umbral < op.y1) {
+    const yu = Y(Math.max(op.umbral, op.y0));
+    x.fillStyle = warn; x.globalAlpha = 0.1; x.fillRect(L, T, W - L - R, yu - T); x.globalAlpha = 1;
+  }
+  const yt = alTicks(op.y0, op.y1);
+  x.font = fnt(12); x.textAlign = "right"; x.textBaseline = "middle";
+  for (const v of yt.ticks) {
+    const yy = Math.round(Y(v)) + 0.5;
+    x.strokeStyle = line; x.lineWidth = 1; x.beginPath(); x.moveTo(L, yy); x.lineTo(W - R, yy); x.stroke();
+    let t = fmtNum(v, yt.step); if ($("coma") && $("coma").checked) t = t.replace(".", ",");
+    x.fillStyle = muted; x.fillText(t, L - 6, yy);
+  }
+  x.save(); x.translate(13, T + (H - T - B) / 2); x.rotate(-Math.PI / 2); x.textAlign = "center"; x.fillText(op.unidad, 0, 0); x.restore();
+  x.textAlign = "center"; x.textBaseline = "top";
+  // marcas de tiempo en horas redondas (o días), sin que se pisen los rótulos
+  const maxM = Math.max(2, Math.floor((W - L - R) / 95)), marcas = [];
+  if (op.fechas) {
+    const hs = [1, 2, 3, 6, 12, 24, 48, 72, 168, 336, 720].map((h) => h * 3600e3);
+    const paso = hs.find((p) => (op.x1 - op.x0) / p <= maxM) || hs[hs.length - 1];
+    for (let t = Math.ceil(op.x0 / paso) * paso; t <= op.x1 + 1; t += paso) {
+      const d = new Date(t), p2 = (n) => String(n).padStart(2, "0");
+      const dia = `${p2(d.getUTCDate())}/${p2(d.getUTCMonth() + 1)}`, hora = `${p2(d.getUTCHours())}:${p2(d.getUTCMinutes())}`;
+      marcas.push([t, paso >= 864e5 ? dia : (hora === "00:00" ? dia : hora)]);
+    }
+  } else {
+    const p = Math.max(1, Math.ceil((op.x1 - op.x0) / maxM));
+    for (let t = Math.ceil(op.x0 / p) * p; t <= op.x1; t += p) marcas.push([t, String(t + 1)]);
+  }
+  let ult = -Infinity;
+  for (const [t, lab] of marcas) {
+    const xx = Math.round(X(t)) + 0.5, w = x.measureText(lab).width, cx = Math.min(Math.max(xx, L + w / 2), W - R - w / 2);
+    x.strokeStyle = line; x.beginPath(); x.moveTo(xx, H - B); x.lineTo(xx, H - B + 4); x.stroke();
+    if (cx - w / 2 < ult + 8) continue;
+    x.fillStyle = lab.includes("/") ? ink : muted; x.fillText(lab, cx, H - B + 7); ult = cx + w / 2;
+  }
+  x.strokeStyle = ink; x.lineWidth = 1; x.strokeRect(L + 0.5, T + 0.5, W - L - R - 1, H - T - B - 1);
+  x.save(); x.beginPath(); x.rect(L, T, W - L - R, H - T - B); x.clip();
+  if (Number.isFinite(op.umbral)) {
+    const yu = Math.round(Y(op.umbral)) + 0.5;
+    x.strokeStyle = warn; x.lineWidth = 1.5; x.setLineDash([6, 4]); x.beginPath(); x.moveTo(L, yu); x.lineTo(W - R, yu); x.stroke(); x.setLineDash([]);
+    x.fillStyle = warn; x.font = fnt(12, 700); x.textAlign = "right"; x.textBaseline = "bottom";
+    x.fillText(op.umbralTxt || "umbral", W - R - 6, yu - 3);
+  }
+  for (const s of series) {
+    x.strokeStyle = s.color; x.lineWidth = s.ancho || 2; x.lineJoin = "round"; x.setLineDash(s.guiones || []);
+    x.beginPath(); let pen = false;
+    for (let i = 0; i < s.v.length; i++) {
+      const v = s.v[i]; if (!Number.isFinite(v)) { pen = false; continue; }
+      if (pen) x.lineTo(X(s.x[i]), Y(v)); else { x.moveTo(X(s.x[i]), Y(v)); pen = true; }
+    }
+    x.stroke(); x.setLineDash([]);
+  }
+  if (Number.isFinite(op.cursor)) {
+    const xa = X(op.cursor);
+    x.strokeStyle = ink; x.globalAlpha = 0.55; x.lineWidth = 1.2; x.setLineDash([3, 3]);
+    x.beginPath(); x.moveTo(xa, T); x.lineTo(xa, H - B); x.stroke(); x.setLineDash([]); x.globalAlpha = 1;
+  }
+  x.restore();
+  return G;
+}
+function alRango(arrs, extra) {
+  let lo = Infinity, hi = -Infinity;
+  for (const a of arrs) for (const v of a) if (Number.isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  for (const v of extra) if (Number.isFinite(v)) { if (v < lo) lo = v; if (v > hi) hi = v; }
+  if (!(hi >= lo)) return [0, 1];
+  const pad = (hi - lo || Math.abs(hi) || 1) * 0.08;
+  return [lo - pad, hi + pad];
+}
+function alEjeX(ds) {
+  // eje de tiempo común: fechas (ms) si todo tiene fechas; si no, número de cuadro
+  return ds && ds.timesOk ? ds.tms : Array.from({ length: ds ? ds.nt : 0 }, (_, i) => i);
+}
+function fmtVal(v, d) { let t = v.toFixed(d); if ($("coma") && $("coma").checked) t = t.replace(".", ","); return t; }
+let alGeoms = {};
+function dibujarAlerta() {
+  if ($("alertaModal").hidden) return;
+  const D = alDatos(), tAct = alTiempoActual(), chips = [];
+  const fechas = (!D.cl || D.cl.timesOk) && (!D.tp || D.tp.timesOk) && Number.isFinite(tAct);
+  let x0 = Infinity, x1 = -Infinity;
+  for (const ds of [D.cl, D.tp]) if (ds) { const xs = fechas ? ds.tms : [0, ds.nt - 1]; x0 = Math.min(x0, xs[0]); x1 = Math.max(x1, xs[xs.length - 1]); }
+  const b = baseDs(), cursor = fechas ? tAct : Math.min(st.k, b ? b.nt - 1 : 0);
+  // clorofila
+  const umbral = parseFloat($("alUmbral").value);
+  $("alCl").hidden = !D.cl; $("alClMsg").hidden = !!D.cl;
+  if (!D.cl) $("alClMsg").textContent = "Este período no trae clorofila-a superficial.";
+  else {
+    $("alUni").textContent = D.cl.unidad || "";
+    const xs = fechas ? D.cl.tms : alEjeX({ nt: D.cl.nt });
+    const [y0, y1] = alRango([D.scl.fil, D.scl.cru], [umbral, 0]);
+    const cs = getComputedStyle(document.documentElement);
+    alGeoms.cl = { G: alGrafico($("alCl"), [
+      { x: xs, v: D.scl.cru, color: cs.getPropertyValue("--muted").trim(), ancho: 1.2, guiones: [4, 3] },
+      { x: xs, v: D.scl.fil, color: "#2e8b57", ancho: 2.2 },
+    ], { x0, x1, y0: Math.max(0, y0), y1, unidad: D.cl.unidad || "", umbral: Number.isFinite(umbral) ? umbral : NaN, umbralTxt: "umbral", cursor, fechas }), fechas };
+    const kc = fechas ? nearestIdx(D.cl.tms, tAct) : Math.min(st.k, D.cl.nt - 1), vc = D.scl.fil[kc];
+    if (Number.isFinite(vc)) {
+      const on = Number.isFinite(umbral) && vc > umbral;
+      chips.push(`<div class="al-chip${on ? " on" : ""}"><b>Clorofila-a máx. superficial</b><strong>${fmtVal(vc, 1)} ${D.cl.unidad}</strong>${on ? " · supera el umbral" : ""}</div>`);
+    }
+  }
+  // estratificación
+  $("alSt").hidden = !D.tp; $("alStMsg").hidden = !!D.tp; $("alLey").hidden = !D.tp;
+  if (!D.tp) $("alStMsg").textContent = "Este período no trae perfiles de temperatura en las estaciones.";
+  else {
+    const xs = fechas ? D.tp.tms : alEjeX({ nt: D.tp.nt });
+    const series = D.gr.map((s, i) => ({ x: xs, v: s.v, color: AL_COLORES[i % AL_COLORES.length], ancho: 2 }));
+    const [y0, y1] = alRango(D.gr.map((s) => s.v), [0, AL_GRAD * 1.3]);
+    alGeoms.st = { G: alGrafico($("alSt"), series, { x0, x1, y0: Math.min(0, y0), y1, unidad: "°C/m", umbral: AL_GRAD, umbralTxt: "estratificada (1 °C/m)", cursor, fechas }), fechas };
+    const ki = fechas ? nearestIdx(D.tp.tms, tAct) : Math.min(st.k, D.tp.nt - 1);
+    $("alLey").innerHTML = D.gr.map((s, i) => `<span><i style="background:${AL_COLORES[i % AL_COLORES.length]}"></i>${s.nombre.replace(/</g, "&lt;")}` +
+      `${Number.isFinite(s.pct) ? ` <small>· estratificada ${fmtVal(s.pct, 0)} % del tiempo</small>` : ""}</span>`).join("");
+    for (const s of D.gr) {
+      const v = s.v[ki]; if (!Number.isFinite(v)) continue;
+      const on = v > AL_GRAD;
+      chips.push(`<div class="al-chip${on ? " on" : ""}"><b>${s.nombre.replace(/</g, "&lt;")}</b><strong>${on ? "Estratificada" : "Mezclada"}</strong> · ${fmtVal(v, 2)} °C/m${on && Number.isFinite(s.z[ki]) ? ` a ${fmtVal(s.z[ki], 1)} m` : ""}</div>`);
+    }
+  }
+  $("alSub").textContent = b ? `${fechas ? fmtFechaF(b, Math.min(st.k, b.nt - 1), st.f || 0, "dmyhm") : `cuadro ${st.k + 1}`}  ·  ${($("periodo").selectedOptions[0] || {}).textContent || ""}` : "";
+  $("alAhora").innerHTML = chips.join("");
+}
+function alClick(e, cual) {
+  const g = alGeoms[cual]; if (!g || !g.G) return;
+  const r = e.currentTarget.getBoundingClientRect(), t = g.G.iX(e.clientX - r.left), b = baseDs(); if (!b) return;
+  if (g.fechas && b.timesOk) setFrame(nearestIdx(b.tms, t)); else setFrame(Math.max(0, Math.min(nFrames() - 1, Math.round(t))));
+}
+$("alCl").addEventListener("click", (e) => alClick(e, "cl"));
+$("alSt").addEventListener("click", (e) => alClick(e, "st"));
+$("alUmbral").addEventListener("input", () => schedule());
+{
+  const am = $("alertaModal");
+  const ver = (si) => { am.hidden = !si; $("alertaBtn").setAttribute("aria-expanded", String(si)); if (si) { $("panelX").click(); schedule(); } };
+  $("alertaBtn").onclick = () => ver(am.hidden);
+  $("alX").onclick = () => ver(false);
+  am.addEventListener("click", (e) => { if (e.target === am) ver(false); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !am.hidden) ver(false); });
+  window.addEventListener("resize", () => { if (!am.hidden) schedule(); });
+}
 </script>
 
 </body></html>
