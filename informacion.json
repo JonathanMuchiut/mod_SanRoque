@@ -1,0 +1,16 @@
+{
+  "texto": [
+    "El visor muestra resultados del modelo hidrodinámico y de calidad de agua del embalse San Roque, implementado en Delft3D (FLOW y D-Water Quality).",
+    "El modelo se basa en los siguientes trabajos:"
+  ],
+  "referencias": [
+    {
+      "tipo": "Artículo científico",
+      "cita": "Muchiut, J., Rodríguez, M. I., Ruibal Conti, A. L., Ruiz, M., & Rodríguez, A. (2023). 3D numerical modeling of an algal bloom event in the San Roque Reservoir, Córdoba, Argentina. *International Journal of Environmental Science and Technology*. https://doi.org/10.1007/s13762-023-05102-5"
+    },
+    {
+      "tipo": "Tesis de maestría",
+      "cita": "Muchiut, J. (2020). *Procesos hidrodinámicos y su relación con floraciones algales y calidad de agua en embalses y lagunas de Córdoba* [Tesis de maestría en Ciencias de la Ingeniería, mención Recursos Hídricos, Universidad Nacional de Córdoba]."
+    }
+  ]
+}
