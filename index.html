@@ -1284,7 +1284,7 @@ function setFrame(k) {
 }
 function fillCampo() {
   const sel = $("campo"), prev = sel.value, opts = [];
-  if (st.vel) opts.push(["mag", "Módulo de velocidad"], ["u", "Componente Este (u)"], ["v", "Componente Norte (v)"]);
+  if (st.vel) opts.push(["mag", "Módulo de velocidad"]);
   st.escs.forEach((e, i) => opts.push([`esc:${i}`, e.variable + (e.unidad ? ` [${e.unidad}]` : "")]));
   opts.push(["ninguno", "Sin fondo (solo agua)"]);
   sel.innerHTML = opts.map(([v, t]) => `<option value="${v}">${t.replace(/</g, "&lt;")}</option>`).join("");
@@ -1820,7 +1820,7 @@ function fillPerfilUI() {
   st.selEst = Math.min(prevE, Math.max(0, st.est.length - 1)); ev.value = String(st.selEst);
   const vv = $("pVar"), prevV = vv.value, op = [];
   st.perf.forEach((p, i) => {
-    if (p.tipo === "vector") op.push([`${i}:mag`, pVarNombre(p, "mag")], [`${i}:u`, pVarNombre(p, "u")], [`${i}:v`, pVarNombre(p, "v")]);
+    if (p.tipo === "vector") op.push([`${i}:mag`, pVarNombre(p, "mag")]);
     else op.push([`${i}:s`, p.variable]);
   });
   vv.innerHTML = op.map(([v, t]) => `<option value="${v}">${t.replace(/</g, "&lt;")}</option>`).join("");
