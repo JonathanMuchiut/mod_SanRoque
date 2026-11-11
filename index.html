@@ -237,6 +237,11 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .al-ley span { display: inline-flex; align-items: center; gap: 6px; }
 .al-ley i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; }
 .al-ahora { display: flex; flex-wrap: wrap; gap: 8px; }
+.al-tl { display: block; width: 100%; background: var(--field); border: 1px solid var(--line); border-radius: 4px; cursor: crosshair; }
+.al-tley { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 16px; font-size: 13px; }
+.al-tley span { display: inline-flex; align-items: center; gap: 6px; }
+.al-tley i { display: inline-block; width: 16px; height: 10px; border-radius: 2px; }
+.al-tley .grad { width: 90px; }
 .al-chip { border: 1px solid var(--line); border-radius: 6px; padding: 6px 10px; font-size: 13px; line-height: 1.35; background: var(--field); }
 .al-chip b { display: block; font-size: 12px; color: var(--muted); font-weight: 600; }
 .al-chip.on { border-color: var(--warn); }
@@ -381,6 +386,13 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 <div class="modal" id="alertaModal" hidden>
   <div class="modal-card al-card" role="dialog" aria-modal="true" aria-labelledby="alTit">
     <div class="modal-head"><div><div class="modal-tit" id="alTit">Alerta</div><div class="modal-sub" id="alSub"></div></div><button class="pop-x" id="alX" aria-label="Cerrar">×</button></div>
+    <section class="al-sec" id="alTlSec">
+      <div class="al-h"><b>Semana modelada por estación</b></div>
+      <p class="hint">Para cada estación, la barra de arriba es el estado de la columna de agua (según el gradiente térmico máximo) y la de abajo, la clorofila-a modelada en superficie en ese punto.</p>
+      <canvas class="al-tl" id="alTl" aria-label="Línea de tiempo de estratificación y clorofila por estación"></canvas>
+      <div class="al-tley" id="alTlLey"></div>
+      <p class="hint" id="alTlMsg" hidden></p>
+    </section>
     <div class="al-ahora" id="alAhora"></div>
     <section class="al-sec">
       <div class="al-h"><b>Clorofila-a superficial máxima</b>
@@ -3158,6 +3170,104 @@ function alEjeX(ds) {
   return ds && ds.timesOk ? ds.tms : Array.from({ length: ds ? ds.nt : 0 }, (_, i) => i);
 }
 function fmtVal(v, d) { let t = v.toFixed(d); if ($("coma") && $("coma").checked) t = t.replace(".", ","); return t; }
+
+/* ---------- Alerta: línea de tiempo por estación (estado de mezcla + clorofila) ---------- */
+const AL_MEZCLA = 0.2;       // °C/m: por debajo, mezcla completa; entre AL_MEZCLA y AL_GRAD, intermedio
+const AL_EST_COL = { mezcla: "#9ecae1", inter: "#f4b860", estrat: "#c7442e" };
+function alEstado(v) { return !Number.isFinite(v) ? null : v >= AL_GRAD ? "estrat" : v >= AL_MEZCLA ? "inter" : "mezcla"; }
+function alClPerfil() { return st.perf.find((p) => p.tipo !== "vector" && canonVar(p.variable) === "clorofila") || null; }
+function alClEstaciones(D) {
+  // clorofila superficial en cada estación: del perfil del WAQ si existe; si no, de la celda del mapa más cercana
+  const pc = alClPerfil(), g = gridDs(), out = new Map();
+  for (const s of D.gr) {
+    if (pc && pc.idx.includes(s.g)) {
+      const v = new Float64Array(pc.nt).fill(NaN);
+      for (let ti = 0; ti < pc.nt; ti++) { const r = perfilEn(pc, "s", s.g, ti); if (r && r.pts.length) v[ti] = r.pts[0].v; }
+      out.set(s.g, { v, tms: pc.tms, timesOk: pc.timesOk, unidad: pc.unidad || "" }); continue;
+    }
+    const e = st.est[s.g]; if (!D.cl || !g || !e || !Number.isFinite(e.x)) continue;
+    let best = -1, dmin = Infinity; const a0 = escFrame(D.cl, 0);
+    for (let i = 0; i < g.xz.length; i++) { if (!Number.isFinite(g.xz[i]) || !Number.isFinite(a0[i])) continue; const d = (g.xz[i] - e.x) ** 2 + (g.yz[i] - e.y) ** 2; if (d < dmin) { dmin = d; best = i; } }
+    if (best < 0) continue;
+    const v = new Float64Array(D.cl.nt); for (let k = 0; k < D.cl.nt; k++) v[k] = escFrame(D.cl, k)[best];
+    out.set(s.g, { v, tms: D.cl.tms, timesOk: D.cl.timesOk, unidad: D.cl.unidad || "" });
+  }
+  return out;
+}
+function alRampa(f) {
+  // verde claro → verde oscuro
+  const a = [237, 248, 177], b = [0, 104, 55], t = Math.max(0, Math.min(1, f));
+  return `rgb(${a.map((c, i) => Math.round(c + (b[i] - c) * t)).join(",")})`;
+}
+function alLinea(D, x0, x1, cursor, fechas, umbral) {
+  const c = $("alTl"), sec = $("alTlSec");
+  if (!D.tp || !D.gr || !D.gr.length) { c.hidden = true; $("alTlLey").hidden = true; $("alTlMsg").hidden = false; $("alTlMsg").textContent = "Este período no trae perfiles de temperatura en las estaciones."; return null; }
+  c.hidden = false; $("alTlLey").hidden = false; $("alTlMsg").hidden = true;
+  if (!D.clEst || D.clEstKey !== D.key) { D.clEst = alClEstaciones(D); D.clEstKey = D.key; }
+  const filas = D.gr.length, hE = 16, hC = 11, gap = 9, T = 8, B = 26, L = 118, R = 14;
+  const cssH = T + B + filas * (hE + 3 + hC) + (filas - 1) * gap;
+  c.style.height = cssH + "px";
+  const dpr = window.devicePixelRatio || 1, r = c.getBoundingClientRect(); if (!r.width) return null;
+  if (c.width !== Math.round(r.width * dpr) || c.height !== Math.round(cssH * dpr)) { c.width = Math.round(r.width * dpr); c.height = Math.round(cssH * dpr); }
+  const x = c.getContext("2d"); x.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const cs = getComputedStyle(document.documentElement), col = (v) => cs.getPropertyValue(v).trim();
+  const ink = col("--ink"), muted = col("--muted"), line = col("--line"), warn = col("--warn");
+  const W = r.width, H = cssH, X = (t) => L + (t - x0) / ((x1 - x0) || 1) * (W - L - R), iX = (px) => x0 + (px - L) / (W - L - R) * (x1 - x0);
+  const fnt = (s, w = 400) => `${w} ${s}px "Calibri", "Carlito", Arial, sans-serif`;
+  x.clearRect(0, 0, W, H);
+  // escala de clorofila común a todas las estaciones
+  let cmax = Number.isFinite(umbral) ? umbral * 1.5 : 0;
+  for (const s of D.clEst.values()) for (const v of s.v) if (Number.isFinite(v) && v > cmax) cmax = v;
+  if (!(cmax > 0)) cmax = 1;
+  const tramos = (xs, n, fn) => {   // dibuja un tramo por instante, de punto medio a punto medio
+    for (let i = 0; i < n; i++) {
+      const a = i ? 0.5 * (xs[i - 1] + xs[i]) : xs[0], b = i < n - 1 ? 0.5 * (xs[i] + xs[i + 1]) : xs[n - 1];
+      const xa = Math.max(L, X(a)), xb = Math.min(W - R, X(b)); if (xb <= xa) continue; fn(i, xa, xb - xa + 0.6);
+    }
+  };
+  const xsT = fechas ? D.tp.tms : Array.from({ length: D.tp.nt }, (_, i) => i);
+  D.gr.forEach((s, f) => {
+    const y = T + f * (hE + 3 + hC + gap);
+    x.fillStyle = ink; x.font = fnt(13, 600); x.textAlign = "right"; x.textBaseline = "middle";
+    let nom = s.nombre; while (x.measureText(nom).width > L - 12 && nom.length > 3) nom = nom.slice(0, -2) + "…";
+    x.fillText(nom, L - 8, y + hE / 2);
+    x.fillStyle = muted; x.font = fnt(10); x.fillText("clorofila", L - 8, y + hE + 3 + hC / 2);
+    x.fillStyle = line; x.fillRect(L, y, W - L - R, hE); x.fillRect(L, y + hE + 3, W - L - R, hC);
+    tramos(xsT, D.tp.nt, (i, xa, w) => { const e = alEstado(s.v[i]); if (!e) return; x.fillStyle = AL_EST_COL[e]; x.fillRect(xa, y, w, hE); });
+    const cl = D.clEst.get(s.g);
+    if (cl) {
+      const xsC = fechas && cl.timesOk ? cl.tms : Array.from({ length: cl.v.length }, (_, i) => i);
+      tramos(xsC, cl.v.length, (i, xa, w) => {
+        const v = cl.v[i]; if (!Number.isFinite(v)) return;
+        x.fillStyle = Number.isFinite(umbral) && v > umbral ? warn : alRampa(v / cmax); x.fillRect(xa, y + hE + 3, w, hC);
+      });
+    }
+  });
+  // eje de tiempo: días
+  const yb = H - B; x.strokeStyle = line; x.lineWidth = 1; x.beginPath(); x.moveTo(L, yb + 0.5); x.lineTo(W - R, yb + 0.5); x.stroke();
+  x.font = fnt(12); x.textAlign = "center"; x.textBaseline = "top";
+  if (fechas) {
+    const dia = 864e5, paso = (x1 - x0) / dia > Math.max(2, Math.floor((W - L - R) / 60)) ? 2 * dia : dia;
+    for (let t = Math.ceil(x0 / dia) * dia; t <= x1 + 1; t += paso) {
+      const xx = Math.round(X(t)) + 0.5, d = new Date(t), p2 = (n) => String(n).padStart(2, "0");
+      x.strokeStyle = line; x.beginPath(); x.moveTo(xx, T); x.lineTo(xx, yb + 4); x.stroke();
+      x.fillStyle = ink; x.fillText(`${p2(d.getUTCDate())}/${p2(d.getUTCMonth() + 1)}`, Math.min(Math.max(xx, L + 14), W - R - 14), yb + 6);
+    }
+  }
+  if (Number.isFinite(cursor)) {
+    const xa = X(cursor); x.strokeStyle = ink; x.lineWidth = 1.5; x.setLineDash([3, 3]);
+    x.beginPath(); x.moveTo(xa, T - 4); x.lineTo(xa, yb); x.stroke(); x.setLineDash([]);
+  }
+  const uni = (D.clEst.values().next().value || {}).unidad || (D.cl ? D.cl.unidad : "") || "";
+  $("alTlLey").innerHTML =
+    `<span><i style="background:${AL_EST_COL.mezcla}"></i>Mezcla completa (&lt; ${fmtVal(AL_MEZCLA, 1)} °C/m)</span>` +
+    `<span><i style="background:${AL_EST_COL.inter}"></i>Intermedio</span>` +
+    `<span><i style="background:${AL_EST_COL.estrat}"></i>Estratificado (≥ ${fmtVal(AL_GRAD, 0)} °C/m)</span>` +
+    `<span>Clorofila-a 0 <i class="grad" style="background:linear-gradient(90deg,${alRampa(0)},${alRampa(1)})"></i> ${fmtVal(cmax, 1)} ${uni}</span>` +
+    (Number.isFinite(umbral) ? `<span><i style="background:${warn}"></i>sobre el umbral</span>` : "");
+  return { iX };
+}
+$("alTl").addEventListener("click", (e) => alClick(e, "tl"));
 let alGeoms = {};
 function dibujarAlerta() {
   if ($("alertaModal").hidden) return;
@@ -3168,6 +3278,7 @@ function dibujarAlerta() {
   const b = baseDs(), cursor = fechas ? tAct : Math.min(st.k, b ? b.nt - 1 : 0);
   // clorofila
   const umbral = parseFloat($("alUmbral").value);
+  alGeoms.tl = { G: alLinea(D, x0, x1, cursor, fechas, umbral), fechas };
   $("alCl").hidden = !D.cl; $("alClMsg").hidden = !!D.cl;
   if (!D.cl) $("alClMsg").textContent = "Este período no trae clorofila-a superficial.";
   else {
