@@ -1347,6 +1347,8 @@ function onCampoChanged(user) {
   const c = $("campo").value;
   $("rowAgua").hidden = c !== "ninguno";
   document.querySelectorAll("[data-escala]").forEach((el) => { el.hidden = c === "ninguno"; });
+  // por defecto, vectores solo con el campo de velocidad (el usuario puede activarlos después)
+  $("vecOn").checked = c === "mag";
   if (user) {
     $("paleta").value = paletaSugerida(c);
     $("invertir").checked = false; $("logEsc").checked = false;
