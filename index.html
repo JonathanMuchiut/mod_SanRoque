@@ -288,6 +288,12 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
 .panel details.sub > .sec { padding-top: 12px; }
 .backdrop { position: fixed; inset: 0; z-index: 14; background: rgba(8, 18, 22, .35); }
 #perfModal .prof-card { border: 0; padding: 0; background: none; }
+.prof-opts { border-top: 1px solid var(--line); }
+.prof-opts > summary { list-style: none; cursor: pointer; padding: 10px 0; font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.08em; display: flex; justify-content: space-between; align-items: center; }
+.prof-opts > summary::-webkit-details-marker { display: none; }
+.prof-opts > summary::after { content: "+"; font-family: var(--mono); color: var(--muted); font-size: 15px; }
+.prof-opts[open] > summary::after { content: "−"; }
+.prof-opts > .sec { max-width: 560px; }
 @media (max-width: 640px) {
   .top { gap: 6px 10px; }
   .top-ctrl { justify-content: flex-start; width: 100%; }
@@ -435,6 +441,25 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
       </div>
       <p class="hint" id="pMsg"></p>
       <div id="pResult" hidden></div>
+      <details class="prof-opts" id="pOpts">
+        <summary>Opciones del perfil</summary>
+        <div class="sec">
+          <p class="hint" id="perfHint" hidden>Tocá una estación en el mapa para ver su perfil vertical. Con el botón ◎ sobre el mapa las mostrás u ocultás.</p>
+          <div class="row"><span class="l">Mostrar estaciones en el mapa</span><div class="cell-r"><input type="checkbox" id="estOn" checked data-s aria-label="Mostrar estaciones con sus nombres"></div></div>
+          <div class="row"><label for="estColor">Color de la estación elegida</label><div class="cell-r"><input type="color" id="estColor" value="#e4572e" data-s></div></div>
+          <div class="row"><span class="l">Rango del período (mín–máx)</span><div class="cell-r"><input type="checkbox" id="pRango" checked data-s></div></div>
+          <div class="row two"><span class="l">Eje de valores mín / máx</span><input type="number" id="pXmin" step="any" placeholder="auto" data-s aria-label="Mínimo del eje de valores"><input type="number" id="pXmax" step="any" placeholder="auto" data-s aria-label="Máximo del eje de valores"></div>
+          <div class="row"><label for="pZmax">Profundidad máxima [m]</label><input type="number" id="pZmax" min="0" step="any" placeholder="auto" data-s></div>
+          <div class="btns">
+            <button class="btn primary" id="medAbrir" data-editor>Cargar mediciones…</button>
+            <button class="btn" id="medQuitar" data-editor>Quitar mediciones</button>
+          </div>
+          <p class="msg" id="medMsg"></p>
+          <p class="hint" id="medInfo"></p>
+          <div class="row"><label for="medTol">Tolerancia de tiempo [h]</label><input type="number" id="medTol" min="0" step="0.5" value="3" data-s></div>
+          <p class="hint" data-editor>CSV con encabezado, separado por <code>;</code>, <code>,</code> o tabulación. Formato largo: <code>estacion; fecha; profundidad; variable; valor</code>. Formato ancho: <code>estacion; fecha; profundidad; Temperatura; OD; …</code> (una columna por variable). Cadena de sensores: <code>Time; -0.4; -1.0; …</code> (una columna por profundidad, una fila por instante). En la tabla de mediciones cada archivo se asigna a una estación y una variable; si trae otras estaciones o variables, se ignoran. Fecha como <code>28/10/2026 10:30</code> o <code>2026-10-28 10:30</code>; la hora puede ir en una columna <code>hora</code>. Profundidad en metros bajo la superficie. Cada perfil medido se compara con la salida del modelo más cercana en el tiempo, si está dentro de la tolerancia; si varios perfiles caen en la misma salida, se usa el más cercano.</p>
+        </div>
+      </details>
     </div>
   </div>
 </div>
@@ -533,26 +558,6 @@ body { display: flex; flex-direction: column; height: 100vh; height: 100dvh; }
         <div class="row"><span class="l">Ejes con coordenadas</span><div class="cell-r"><input type="checkbox" id="ejes" checked data-s></div></div>
         <div class="row"><span class="l">Coma decimal</span><div class="cell-r"><input type="checkbox" id="coma" data-s></div></div>
         <div class="row"><span class="l">Flecha de norte</span><div class="cell-r"><input type="checkbox" id="norte" checked data-s></div></div>
-      </div>
-    </details>
-
-    <details open>
-      <summary>Perfiles y mediciones</summary>
-      <div class="sec">
-        <p class="hint" id="perfHint">Tocá una estación en el mapa para ver su perfil vertical. Con el botón ◎ sobre el mapa las mostrás u ocultás.</p>
-        <div class="row"><span class="l">Mostrar estaciones en el mapa</span><div class="cell-r"><input type="checkbox" id="estOn" checked data-s aria-label="Mostrar estaciones con sus nombres"></div></div>
-        <div class="row"><label for="estColor">Color de la estación elegida</label><div class="cell-r"><input type="color" id="estColor" value="#e4572e" data-s></div></div>
-        <div class="row"><span class="l">Rango del período (mín–máx)</span><div class="cell-r"><input type="checkbox" id="pRango" checked data-s></div></div>
-        <div class="row two"><span class="l">Eje de valores mín / máx</span><input type="number" id="pXmin" step="any" placeholder="auto" data-s aria-label="Mínimo del eje de valores"><input type="number" id="pXmax" step="any" placeholder="auto" data-s aria-label="Máximo del eje de valores"></div>
-        <div class="row"><label for="pZmax">Profundidad máxima [m]</label><input type="number" id="pZmax" min="0" step="any" placeholder="auto" data-s></div>
-        <div class="btns">
-          <button class="btn primary" id="medAbrir" data-editor>Cargar mediciones…</button>
-          <button class="btn" id="medQuitar" data-editor>Quitar mediciones</button>
-        </div>
-        <p class="msg" id="medMsg"></p>
-        <p class="hint" id="medInfo"></p>
-        <div class="row"><label for="medTol">Tolerancia de tiempo [h]</label><input type="number" id="medTol" min="0" step="0.5" value="3" data-s></div>
-        <p class="hint" data-editor>CSV con encabezado, separado por <code>;</code>, <code>,</code> o tabulación. Formato largo: <code>estacion; fecha; profundidad; variable; valor</code>. Formato ancho: <code>estacion; fecha; profundidad; Temperatura; OD; …</code> (una columna por variable). Cadena de sensores: <code>Time; -0.4; -1.0; …</code> (una columna por profundidad, una fila por instante). En la tabla de mediciones cada archivo se asigna a una estación y una variable; si trae otras estaciones o variables, se ignoran. Fecha como <code>28/10/2026 10:30</code> o <code>2026-10-28 10:30</code>; la hora puede ir en una columna <code>hora</code>. Profundidad en metros bajo la superficie. Cada perfil medido se compara con la salida del modelo más cercana en el tiempo, si está dentro de la tolerancia; si varios perfiles caen en la misma salida, se usa el más cercano.</p>
       </div>
     </details>
 
@@ -2342,6 +2347,9 @@ $("panel").addEventListener("input", (e) => {
   schedule(); persist();
 });
 $("panel").addEventListener("change", (e) => { if (e.target.type === "color" || e.target.tagName === "SELECT") { schedule(); persist(); } });
+// Opciones del perfil (dentro de la ventana del perfil): redibujar al cambiarlas
+$("pOpts").addEventListener("input", () => { schedule(); persist(); });
+$("pOpts").addEventListener("change", (e) => { if (e.target.type === "color") { schedule(); persist(); } });
 // La variable está en la barra de arriba (fuera del panel): redibujar al cambiarla
 $("campo").addEventListener("change", () => { onCampoChanged(true); schedule(); persist(); });
 $("vecAuto").onclick = () => autoEscalaVec(true);
