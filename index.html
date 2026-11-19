@@ -1420,7 +1420,7 @@ async function loadFiles(files) {
     try {
       const res = parseD3DV(await file.arrayBuffer(), file.name), lista = res.campos;
       if (st.demo) { st.vel = null; st.escs = []; st.demo = false; st.est = []; st.perf = []; if (st.medsDemo) { st.meds = []; st.medsDemo = false; st.medCache = {}; } }
-      if (res.perf.length) { st.est = res.est; st.perf = res.perf; st.envCache = {}; st.selEst = 0; }
+      if (res.perf.length) { st.est = res.est; st.perf = res.perf; st.envCache = {}; st.pXkey = null; st.selEst = 0; }
       const g = gridDs();
       if (g && (g.N !== lista[0].N || g.M !== lista[0].M)) {
         st.vel = null; st.escs = [];
@@ -1537,7 +1537,7 @@ function demo() {
     { ...comun, variable: "Clorofila-a", unidad: "µg/l", tipo: "escalar", data: pc },
     { ...comun, variable: "Oxígeno disuelto", unidad: "mg/l", tipo: "escalar", data: po },
   ];
-  st.envCache = {}; st.selEst = 0;
+  st.envCache = {}; st.pXkey = null; st.selEst = 0;
   // mediciones de ejemplo: dos perfiles en la Estación A
   st.meds = [];
   for (const [kk, hh] of [[10, 10], [34, 10]]) for (const z of [0.5, 2, 4, 6, 8, 10, 12, 14]) {
@@ -1976,6 +1976,19 @@ function fmtMs(ms) {
   const d = new Date(ms), p = (n) => String(n).padStart(2, "0");
   return `${p(d.getUTCDate())}/${p(d.getUTCMonth() + 1)}/${d.getUTCFullYear()} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())}`;
 }
+function rangoGlobal(p, comp, g, comps) {
+  // mín y máx de la variable en la estación en todo el período: salida del modelo y mediciones comparables
+  let lo = Infinity, hi = -Infinity;
+  for (const a of envolvente(p, comp, g).pts) { lo = Math.min(lo, a.lo); hi = Math.max(hi, a.hi); }
+  for (const x of comps) if (Number.isFinite(x.m.v)) { lo = Math.min(lo, x.m.v); hi = Math.max(hi, x.m.v); }
+  if (!Number.isFinite(lo) || !Number.isFinite(hi)) return null;
+  if (hi - lo < 1e-9) { lo -= 0.5; hi += 0.5; }
+  const s = niceStep(hi - lo, 8);
+  const r = (v) => +v.toPrecision(10);
+  let a = r(Math.floor(lo / s + 1e-9) * s), b = r(Math.ceil(hi / s - 1e-9) * s);
+  if (b <= a) b = r(a + s);
+  return [a, b];
+}
 function renderPerfil() {
   if ($("profCard").hidden) return;
   const sel = pVarSel(), g = st.selEst, e = st.est[g];
@@ -1994,6 +2007,14 @@ function renderPerfil() {
   const comps = comparar(p, comp, g, q.tol);
   const visibles = comps.filter((x) => x.ti === ti);
   const medsHoy = visibles.map((x) => x.m);
+  // eje de valores: al cambiar de estación o variable se precarga con el mín–máx de todo el período
+  // (modelo y mediciones); después el usuario lo puede cambiar a mano
+  const akey = `${st.perf.indexOf(p)}|${comp}|${g}|${st.meds.length}`;
+  if (st.pXkey !== akey) {
+    st.pXkey = akey;
+    const rg = rangoGlobal(p, comp, g, comps);
+    if (rg) { $("pXmin").value = String(rg[0]); $("pXmax").value = String(rg[1]); q.xmin = rg[0]; q.xmax = rg[1]; }
+  }
   // rangos
   let x0 = Infinity, x1 = -Infinity, zmax = 0; const conZr = r.conZ;
   for (const a of r.pts) { x0 = Math.min(x0, a.v); x1 = Math.max(x1, a.v); zmax = Math.max(zmax, a.z); }
@@ -2668,7 +2689,7 @@ function cargarPeriodo(buf) {
   const meta = JSON.parse(new TextDecoder().decode(u8.subarray(8, 8 + L)));
   const res = parseD3DV(descuantizarD3DV(buf.slice(8 + L)), meta.nombre || "periodo");
   const campoPrev = $("campo").value, nombrePrev = campoNombre(campoPrev);
-  st.vel = null; st.escs = []; st.est = res.est; st.perf = res.perf; st.envCache = {}; st.selEst = Math.min(st.selEst, Math.max(0, res.est.length - 1));
+  st.vel = null; st.escs = []; st.est = res.est; st.perf = res.perf; st.envCache = {}; st.pXkey = null; st.selEst = Math.min(st.selEst, Math.max(0, res.est.length - 1));
   for (const ds of res.campos) { if (ds.tipo === "vector") st.vel = ds; else st.escs.push(ds); }
   st.meds = (meta.mediciones || []).map(([estTxt, t, z, varTxt, v]) => ({ est: normTxt(estTxt), estTxt, t, z, varTxt, varc: canonVar(varTxt), v }));
   st.medsDemo = false; st.medCache = {}; st.demo = !!meta.ejemplo; st.k = 0; st.f = 0;
